@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Imitation minimale de l'API d'indicateurs Deepchart (VolSysAPI.dll + VolumetricaCore.dll), écrite d'après la
+    documentation publique (docs-indicators.deepcharts.com) et les exemples officiels. Elle sert UNIQUEMENT à vérifier
+    que l'indicateur compile sur une machine sans Deepchart (Linux, CI). Elle n'est jamais livrée avec l'indicateur :
+    la vraie compilation se fait contre les dll de Deepchart (src/OrderFlowScalper/OrderFlowScalper.csproj).
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+</Project>

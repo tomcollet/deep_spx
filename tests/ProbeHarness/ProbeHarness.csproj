@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Banc d'essai de la sonde : simule un graphique Deepchart (historique, puis temps reel rejoue) contre
+    l'imitation de l'API, verifie les verdicts de summary.txt et sort en erreur si l'un d'eux est faux.
+    Lancement : dotnet run, option project, sur tests/ProbeHarness (voir README)
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+    <IsPackable>false</IsPackable>
+    <NoWarn>$(NoWarn);CA1416</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="../../src/DeepGammaProbe/**/*.cs" Exclude="../../src/DeepGammaProbe/obj/**;../../src/DeepGammaProbe/bin/**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../DeepchartApiStubs/DeepchartApiStubs.csproj" />
+  </ItemGroup>
+</Project>

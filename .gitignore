@@ -1,0 +1,19 @@
+# .NET
+bin/
+obj/
+.vs/
+*.user
+*.suo
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+.ipynb_checkpoints/
+
+# Donnees de marche et sorties (jamais committees)
+data/
+*.tdatac
+*.zip
+Probe/
+deepchart-api.txt
