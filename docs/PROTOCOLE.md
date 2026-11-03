@@ -5,14 +5,15 @@
 | Source | Contenu | Rôle |
 |---|---|---|
 | `.tdatac` DeepCharts (contrats 202603 à 202612, sur le Mac dans `~/Claude/Projects/Ticks`) | Trades tick par tick avec bid/ask (flux zstd d'enregistrements de 65 octets) | Référence pour les trades, les features d'agression et la simulation d'exécution |
-| Enregistreur DLL en Deep Replay | Séries DeepGamma + features ES + carnet, minute par minute | Régime et zones ; carnet si le replay le rejoue |
+| Enregistreur DLL en Deep Replay, sorti par le log de Deepchart (`DSPX;`, relu par `tools/extract_dspx.py`) | Séries DeepGamma + features ES + carnet, minute par minute | Régime et zones ; carnet si le replay le rejoue |
 | Exports minutes DeepCharts (1 ou 2 séances) | Barres 1 min | Contrôle de l'agrégation et des horodatages, rien d'autre |
 
 - **Ticks plutôt que minutes** : les déclencheurs se calculent trade par trade, et seuls les ticks disent si le stop ou
   l'objectif a été touché en premier dans une minute.
 - **Jointure** sur des minutes en UTC. DeepGamma se met à jour chaque minute.
-- **Carnet** : les `.tdatac` n'en ont pas. Si le replay ne le rejoue pas, historique MBO via Databento (l'historique CME
-  ne demande pas de licence).
+- **Carnet** : les `.tdatac` n'en ont pas. Le flux L2 de DeepCharts arrive dans la DLL par `OnBook` (carnet par prix).
+  Si le replay ne le rejoue pas : enregistrement à partir de maintenant, ou historique MBO via Databento (l'historique
+  CME ne demande pas de licence).
 - Les données ne sont **jamais committées** (`data/` est ignoré).
 
 ## Découpage

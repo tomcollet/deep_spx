@@ -1,121 +1,127 @@
-# Sonde DeepGamma : protocole de test
+# Sonde DeepGamma : protocole de test (version 2)
 
-La sonde est un indicateur DeepCharts **en lecture seule**. Elle n'envoie aucun ordre, ne dessine rien et ne modifie
-pas le graphique. Elle écrit uniquement dans `Documents\Deepchart\Probe\<date_heure>\`, avec un nouveau dossier à
-chaque chargement.
+La sonde est un indicateur DeepCharts **en lecture seule** : aucun ordre, rien de dessiné, le graphique n'est pas
+modifié.
 
-Elle répond à six questions :
+**Deepchart refuse de charger une DLL qui utilise fichiers, réseau, réflexion, threads ou `lock`**
+([troubleshooting](https://docs-indicators.deepcharts.com/troubleshooting)). La sonde écrit donc tout dans **le log de
+Deepchart**, une ligne par enregistrement, préfixe `DSPX;`. `tools/extract_dspx.py` range ensuite ces lignes en fichiers
+CSV.
 
-| # | Question | Réponse dans |
+Elle répond à sept questions :
+
+| # | Question | Lignes du log |
 |---|---|---|
-| Q1 | La DLL lit-elle les séries des indicateurs DeepGamma ? | `summary.txt`, `series_catalog_*.csv` |
-| Q2 | Ces séries ont-elles un historique ? | `summary.txt`, `series_values.csv` |
-| Q3 | Le carnet arrive-t-il (OnBook, RebuildDom) ? | `summary.txt`, `book_rt.txt`, `book_snapshot.txt` |
-| Q4 | Les trades historiques arrivent-ils ? | `summary.txt`, `ticks_hist.csv` |
-| Q5 | La DLL peut-elle écrire des fichiers ? | `file_write_test.txt` |
-| Q6 | Tout ça marche-t-il en Deep Replay ? | `summary.txt` (test C) |
+| Q1 | La DLL lit-elle les séries des indicateurs DeepGamma ? | `CAT` |
+| Q2 | Ces séries ont-elles un historique ? | `HSER` |
+| Q3 | Le carnet arrive-t-il, sur combien de niveaux ? | `BOOKEX`, `BOOKSNAP`, `BOOKMIN` |
+| Q4 | Les trades historiques arrivent-ils ? | `HIST`, `TICK1HIST` |
+| Q5 | Le log sert-il de canal de sortie ? | toutes |
+| Q6 | Le graphique est-il un replay (`VAn.IsReplayData`) ? | `META`, `VERDICT` |
+| Q7 | En live, les séries DeepGamma valent-elles 0 ? (issue #4 du dépôt officiel) | `SER`, `VERDICT` |
+
+Les verdicts sont réécrits à la fin de l'historique, puis toutes les 5 minutes de bourse (lignes `VERDICT`).
 
 ---
 
-## 0. Inventaire de l'API (2 min, sans lancer DeepCharts)
+## 0. Avant de compiler (2 min, sans lancer DeepCharts)
 
-Depuis le dossier du dépôt :
+- **Version de DeepCharts : 16.5.4 au minimum.** En 16.5.3, `HistRT` ne livrait aucun trade historique (issue #1,
+  corrigée en 16.5.4 d'après Volumetrica).
+- **Inventaire de l'API** :
+  ```
+  dotnet run --project tools\ApiDump
+  ```
+  Écrit `deepchart-api.txt` : signature exacte de `GetSeriesValueById`, champs de `BookUpdate` (y a-t-il du MBO ?),
+  membres d'`AggrInfo`. Envoie-le-moi. Il n'est pas committé, car il décrit des DLL propriétaires.
 
-```
-dotnet run --project tools\ApiDump
-```
-
-L'outil lit `VolSysAPI.dll` et `VolumetricaCore.dll` comme des fichiers et écrit `deepchart-api.txt`. On y trouve la
-signature exacte de `GetSeriesValueById`, que la doc ne donne pas. Envoie-moi ce fichier : il n'est pas committé, car
-il décrit des DLL propriétaires.
-
-## 1. Compilation
+## 1. Compilation et contrôle
 
 ```
 dotnet build src\DeepGammaProbe -p:DeepchartDevId=TON-ID
+dotnet run --project tools\DllCheck -- "%USERPROFILE%\Documents\Deepchart\Indicators\DeepSpx.Probe.dll"
 ```
 
-La DLL `DeepSpx.Probe.dll` est écrite dans `Documents\Deepchart\Indicators`, et DeepCharts la recharge sans
-redémarrer. Le developer id reste en ligne de commande pour ne jamais être committé.
+La DLL `DeepSpx.Probe.dll` va dans `Documents\Deepchart\Indicators`, et DeepCharts la recharge seul. `DllCheck` doit
+répondre `OK ... aucune interdite`. Si Deepchart refuse quand même la DLL, une notification « not allowed » s'affiche
+et son log en donne la raison : envoie-moi cette ligne.
 
-Si Deepchart n'est pas dans `C:\Program Files\Volumetrica Trading\Deepchart\`, ajoute
-`-p:DeepchartDir="D:\chemin\Deepchart\"`.
+**Si la compilation échoue sur `GetSeriesValueById`**, le message du compilateur et `deepchart-api.txt` donnent la
+vraie signature : envoie-les-moi.
 
 ## 2. Le graphique
 
 1. **New → Option Chart → SPX** (symbole ES-CME). Unité **1 minute**, **5 jours** d'historique.
-2. **Ajoute les indicateurs DeepGamma de ton offre** :
-   - Option Summary, source *Gex (market maker)* ;
-   - Option Levels/Envelopes ;
-   - Option Levels / OI (RT), source *Market Maker* ;
-   - Expected Move ;
-   - Net Flow et Option Delta si ton offre les inclut.
+2. **Ajoute les indicateurs DeepGamma de ton offre** : Option Summary (source *Gex (market maker)*), Option
+   Levels/Envelopes, Option Levels / OI (RT) en source *Market Maker*, Expected Move, et si possible Net Flow, Option
+   Delta et Market Maker Pressure.
 3. **Ajoute la sonde en dernier** : liste des indicateurs → *Personal* → **Probe - DeepGamma Recorder Test**.
-4. **Note l'ordre dans lequel tu as ajouté les indicateurs.** Ça permet de faire correspondre les numéros d'indicateur
-   aux noms.
+4. **Note l'ordre d'ajout des indicateurs.** Les numéros lus par la sonde suivent sans doute cet ordre (dans l'issue
+   #4, Market Maker Pressure est l'indicateur 3) : c'est ce qui permettra de nommer chaque série.
 
 ## 3. Les trois tests
 
-**A. Historique (faisable tout de suite, même marché fermé)**
-Attends la fin du chargement. `summary.txt` apparaît et se met à jour toutes les 10 s. Ce test répond à Q1, Q2, Q4 et Q5.
+**A. Historique (tout de suite, même marché fermé)** : attends la fin du chargement. Ce test répond à Q1, Q2, Q4 et Q5.
 
-**B. Live (15 min de marché)**
-Pour voir DeepGamma bouger, fais-le pendant la séance US (15h30-22h heure de Paris). Ce test répond à Q3 et montre les
-valeurs DeepGamma minute par minute en temps réel.
+**B. Live (30 min de séance US, 15h30-22h heure de Paris)** : ce test répond à Q3 en live, et à Q7, le point critique.
+Si les séries DeepGamma valent 0 en live alors qu'elles bougent à l'écran, c'est le bug de l'issue #4.
 
-**C. Deep Replay (20 à 30 min)**
-Ouvre une séance passée en replay (un jour d'octobre, par exemple) avec le même graphique et la sonde. Laisse tourner
-20 à 30 min en vitesse x10. Ce test répond à Q6 : on saura si DeepGamma est rejoué sur desktop.
+**C. Deep Replay (30 min en vitesse x10)** : une séance passée, même graphique, même sonde. Ce test dit si DeepGamma est
+lisible en replay (l'issue #4 dit oui) et **si le replay rejoue le carnet** (lignes `BOOKMIN` non vides).
 
-**Lire le résultat** : section `VERDICT PROVISOIRE` en bas de `summary.txt`.
+## 4. Récupérer les résultats
 
-**Si Q1 = NON** : dans le Pattern Builder, regarde les *Indicator ID* qu'il propose pour les indicateurs DeepGamma. Si
-ce sont de grands nombres (1001, par exemple), règle le paramètre `IndicatorIdStart` de la sonde sur ce nombre et
-relance. La signature relevée par ApiDump (étape 0) dit aussi quel type d'identifiant est attendu.
+Trouve le log de Deepchart qui contient les lignes de la sonde (PowerShell, après un test) :
 
-## 4. Ce qu'il faut renvoyer
+```powershell
+Get-ChildItem "$env:USERPROFILE\Documents\Deepchart", $env:LOCALAPPDATA, $env:APPDATA -Recurse -File -ErrorAction SilentlyContinue |
+  Where-Object { $_.LastWriteTime -gt (Get-Date).AddHours(-2) } |
+  Select-String -Pattern 'DSPX;' -List | Select-Object Path
+```
 
-Le dossier de chaque test, zippé. Au minimum :
-- `summary.txt` ;
-- `api_dump.txt` (l'API telle que la voit la DLL en cours d'exécution) ;
-- `indicators_*.txt` ;
-- `series_catalog_*.csv` ;
-- `deepchart-api.txt` de l'étape 0.
+Puis :
 
-Ne les committe pas : ce sont des données de marché et des descriptions de DLL propriétaires (`data/` et les sorties
-sont dans `.gitignore`).
+```
+python tools\extract_dspx.py CHEMIN_DU_LOG --out data\probe\testA
+```
 
-## Fichiers produits
+Un fichier CSV par type de ligne, et les derniers verdicts à l'écran. **Envoie-moi le dossier de chaque test** (et
+`deepchart-api.txt`). `data/` n'est pas committé.
 
-| Fichier | Contenu |
+## Types de lignes
+
+| Ligne | Contenu |
 |---|---|
-| `summary.txt` | Résumé et verdict, mis à jour toutes les 10 s |
-| `api_dump.txt` | Signatures réelles de l'API (VAn, Indicator, trade, carnet, TradingApi en inventaire seulement) |
-| `indicators_*.txt` | Paramètres de chaque indicateur du graphique (GetParamsById) |
-| `series_catalog_*.csv` | Valeur de chaque série testée, maintenant et 10, 60 et 390 barres avant |
-| `series_values.csv` | Séries lisibles, barre par barre (historique relu, puis temps réel) |
-| `bars.csv` | Barres 1 min : OHLC et volumes ask/bid, pour contrôler l'alignement avec les .tdatac |
-| `ticks_rt.csv` / `ticks_hist.csv` | Trades temps réel (30 min) et premiers trades historiques |
-| `book_rt.txt` / `book_snapshot.txt` | Mises à jour du carnet (3 min) et état complet du carnet |
-| `file_write_test.txt` | Preuve d'écriture |
+| `META` | Version, symbole, graphique, replay, phase du graphique, paramètres |
+| `HEAD` | En-tête des lignes suivantes |
+| `HIST` | Fin de l'historique : nombre de barres et de trades historiques, première et dernière barre |
+| `CAT` | Catalogue : valeur de chaque série testée maintenant et 10, 60 et 390 barres avant, ou l'erreur |
+| `HSER` | Par série lisible : barres renseignées sur l'historique relu, valeurs distinctes, min, max, première et dernière |
+| `SER` | Par série lisible et par minute de temps réel : la valeur |
+| `BOOKEX`, `BOOKSNAP` | Premières mises à jour du carnet et état complet (`RebuildDom`) |
+| `BOOKMIN` | Par minute : mises à jour, resets, niveaux bid/ask, meilleurs prix, profondeur en ticks, quantités sur 10 niveaux |
+| `TICKMIN` | Par minute : trades, volume, volume à l'ask et au bid |
+| `TICK1HIST`, `TICK1RT` | Premier trade historique et premier trade temps réel, tous champs |
+| `SUM`, `VERDICT`, `ERR` | Compteurs, verdicts Q1 à Q7, erreurs |
 
 ## Paramètres de la sonde
 
 | Paramètre | Défaut | Rôle |
 |---|---|---|
 | IndicatorIdStart | 0 | Premier numéro d'indicateur testé |
-| MaxIndicators | 40 | Nombre de numéros testés |
-| MaxSeries | 20 | Séries testées par indicateur |
+| MaxIndicators | 30 | Nombre de numéros testés |
+| MaxSeries | 12 | Séries testées par indicateur |
 | HistoryBarsToScan | 600 | Barres passées relues à la fin du chargement |
-| TickLogMinutes | 30 | Durée d'enregistrement détaillé des trades temps réel |
-| HistoryTicksToLog | 2000 | Trades historiques écrits (les autres sont seulement comptés) |
-| BookLogMinutes | 3 | Durée d'enregistrement détaillé du carnet |
+| RtSeriesMinutes | 60 | Minutes de temps réel pendant lesquelles les séries sont écrites |
+| RtStatsMinutes | 60 | Minutes de temps réel pendant lesquelles carnet et trades sont résumés |
 
-## Vérifier la sonde sans DeepCharts
+## Vérifier sans DeepCharts
 
 ```
+dotnet build tests\ProbeCompileCheck
+dotnet run --project tools\DllCheck -- tests\ProbeCompileCheck\bin\Debug\net10.0\ProbeCompileCheck.dll
 dotnet run --project tests\ProbeHarness
 ```
 
-Le banc simule un graphique (historique, puis séance rejouée, trois faux indicateurs, un carnet) contre l'imitation de
-l'API (`tests/DeepchartApiStubs`) et vérifie les six verdicts. Il doit finir sur huit lignes `OK`.
+Le banc simule un graphique (historique, replay, trois faux indicateurs dont un à 0 en temps réel, un carnet) et lit
+les lignes `DSPX;` écrites dans le faux log. Il doit finir sur dix lignes `OK`.

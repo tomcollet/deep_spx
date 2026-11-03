@@ -241,6 +241,14 @@ namespace VolSysAPI
         void PlayAlert(string alertName);
         VolumetricaAPI.Connection.Structure.BookUpdate RebuildDom();
         void AddToLog(string message, VolumetricaAPI.LogLevelEnum level, string source = null, bool? showToast = null);
+
+        // Ajouts deep_spx. Documentés dans docs/reference/chart-api du dépôt officiel ; types exacts à confirmer par
+        // tools/ApiDump (deepchart-api.txt).
+        bool IsReplayData { get; }
+        object ChartPhase { get; }
+        // Appel GetSeriesValueById(3, 0, barIndex), trois int, vu dans l'issue #4 du dépôt officiel (code compilé
+        // contre les vraies dll). Type de retour non documenté : double ici.
+        double GetSeriesValueById(int indicator, int series, int index);
     }
 }
 
