@@ -39,7 +39,7 @@ Les verdicts sont réécrits à la fin de l'historique, puis toutes les 5 minute
 
 ```
 dotnet build src\DeepGammaProbe -p:DeepchartDevId=TON-ID
-dotnet run --project tools\DllCheck -- "%USERPROFILE%\Documents\Deepchart\Indicators\DeepSpx.Probe.dll"
+dotnet run --project tools\DllCheck -- "$env:USERPROFILE\Documents\Deepchart\Indicators\DeepSpx.Probe.dll"
 ```
 
 La DLL `DeepSpx.Probe.dll` va dans `Documents\Deepchart\Indicators`, et DeepCharts la recharge seul. `DllCheck` doit
@@ -77,6 +77,13 @@ Trouve le log de Deepchart qui contient les lignes de la sonde (PowerShell, apr�
 Get-ChildItem "$env:USERPROFILE\Documents\Deepchart", $env:LOCALAPPDATA, $env:APPDATA -Recurse -File -ErrorAction SilentlyContinue |
   Where-Object { $_.LastWriteTime -gt (Get-Date).AddHours(-2) } |
   Select-String -Pattern 'DSPX;' -List | Select-Object Path
+```
+
+Pour suivre les lignes en direct (et mesurer le délai du log : chaque `BOOKMIN` doit apparaître juste après le
+changement de minute) :
+
+```powershell
+Get-Content -Path "CHEMIN_DU_LOG" -Wait -Tail 0 | Select-String "DSPX;"
 ```
 
 Puis :

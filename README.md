@@ -26,7 +26,7 @@ git clone https://github.com/tomcollet/deep_spx
 cd deep_spx
 dotnet run --project tools\ApiDump                           # inventaire de l'API -> deepchart-api.txt
 dotnet build src\DeepGammaProbe -p:DeepchartDevId=TON-ID      # sonde -> Documents\Deepchart\Indicators
-dotnet run --project tools\DllCheck -- "%USERPROFILE%\Documents\Deepchart\Indicators\DeepSpx.Probe.dll"
+dotnet run --project tools\DllCheck -- "$env:USERPROFILE\Documents\Deepchart\Indicators\DeepSpx.Probe.dll"
 python tools\extract_dspx.py CHEMIN_DU_LOG --out data\probe\testA   # après un test
 ```
 
