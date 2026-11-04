@@ -1,4 +1,4 @@
-# Indicateur de setups (v1.6)
+# Indicateur de setups (v1.7)
 
 `src/DeepSpxSetups` : indicateur DeepCharts **« DeepSpx - Setups gamma x order flow »**. Il signale des achats et des
 ventes selon les trois setups de [STRATEGIE.md](STRATEGIE.md), dessine les signaux et leur résultat simulé, et
@@ -85,7 +85,26 @@ annulée. Conséquence attendue : le setup C (objectif = le strike, stop à 1 AT
 **Filtres communs** : séance régulière 09:30-16:00 New York ; pas d'entrée les 5 premières minutes ni après 15:45 ;
 FLAT de tout à 15:45 ; une position à la fois ; 3 signaux par jour au plus ; arrêt après 2 pertes.
 
-## Étude des scalps (H1, H2)
+## Recherche de configuration A/B/C (v1.7)
+
+Selon [research/optim_abc/PREREG.md](../research/optim_abc/PREREG.md) : 64 configurations (A 24, B 36, C 4 ; bande de
+transition, objectif structurel / 1,5R / 2R, seuils d'absorption, d'écart à la VWAP, de delta de cassure, Net Flow
+exigé ou non, stop de C), chacune avec son contrôle en sens inverse, rejouées par l'indicateur sur l'historique chargé
+(barres d'une minute, 1 an). Séances avec DeepGamma **avant le 16/08/2026** (holdout d'A/B/C scellé), 60 % en
+recherche, 40 % en validation.
+
+- Le rejeu se fait par tranches de `OptBudgetMs` (250 ms) à chaque appel de Deepchart, pour ne pas le figer (pas de
+  thread dans le bac à sable) ; le panneau affiche l'avancement. `OptSynchronous` : tout d'un coup au chargement.
+- Panneau : couverture (séances, dates, part des barres avec volumes ask/bid), puis par setup la configuration retenue
+  (ou la n° 1 et la raison du rejet), ses chiffres en recherche et en validation, et son sens inverse.
+- Log : `DSPX;OPTALL` (toute la grille, en recherche seulement), `DSPX;OPTINFO`, `DSPX;OPTRANK` (les 3 premières de
+  chaque setup, avec leur validation et leur verdict).
+- Une configuration retenue se reporte en live par les paramètres `TransitionAtr`, `TargetMode`, `TargetR`,
+  `AbsorbPct`, `VwapDevAtr`, `BreakDeltaPct`, `RequireNetFlow`, `StopAtr` et `EnableSetupA/B/C`.
+
+## Étude des scalps (H1, H2), close
+
+Close le 04/11/2026 (échec, [résultats](../research/scalp_flux/RESULTATS.md)) ; désactivée par défaut (`ShowStudy`).
 
 Calculée par l'indicateur sur l'historique chargé, selon [research/scalp_flux/PREREG.md](../research/scalp_flux/PREREG.md),
 et affichée dans le panneau (critère principal : stop 16, objectif 24 ticks) :
@@ -143,7 +162,9 @@ et affichée dans le panneau (critère principal : stop 16, objectif 24 ticks) :
 
 `EnableSetupA/B/C`, `RequireNetFlow`, `UseSummarySign`, `BlockOnStaleGamma`, `MaxTradesPerDay` (3), `MaxLossesPerDay`
 (2), `SlippageTicks` (1), `MaxRiskTicks` (25), `MinRewardRisk` (1.5), `ShowStudy`, `StudyStartDate` (0),
-`StudyEndDate` (20261105, exclu : ne pas dépasser sans décision, au-delà l'étude entame le test final), `ApplyOptionOffset` (ajoute l'écart indice/future de la barre aux niveaux DeepGamma, si ceux-ci
+`StudyEndDate` (20261105, exclu : ne pas dépasser sans décision, au-delà l'étude entame le test final), `RunOptimizer`,
+`OptStartDate`, `OptEndDate` (20260816, exclu), `OptBudgetMs` (250), `OptSynchronous`, `TransitionAtr` (0.5),
+`TargetMode` (0), `TargetR` (2), `AbsorbPct` (90), `VwapDevAtr` (1.5), `BreakDeltaPct` (80), `StopAtr` (1), `ApplyOptionOffset` (ajoute l'écart indice/future de la barre aux niveaux DeepGamma, si ceux-ci
 s'avèrent être en prix SPX), `EnvelopesId`, `SummaryId`, `NetFlowId`, `MmPressureId` (-1 = automatique),
 `MaxIndicatorScan`, `BarTimeZone`, `SummaryLagBars` (5), `LagLogMinutes` (30), `ShowStats`, `PanelFontSize`, `PanelX`, `PanelY`, `PanelLineStep`. Les autres seuils sont dans
 `Engine/EngineSettings.cs`.

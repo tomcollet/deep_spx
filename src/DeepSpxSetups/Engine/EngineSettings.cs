@@ -63,10 +63,20 @@ namespace DeepSpx.Engine
         public int MaxRiskTicks = 25;
         public double MinRewardRisk = 1.5;
 
+        // ---- Objectif : 0 = structurel (VWAP pour A, niveau suivant pour B, strike pour C), 1 = TargetR fois le risque
+        //      depuis l'entree attendue (A et B ; C garde le strike). Recherche de configuration : research/optim_abc.
+        public int TargetMode = 0;
+        public double TargetR = 2.0;
+        /// Controle : meme entree, sens inverse, stop et objectif en miroir autour de l'entree attendue.
+        public bool FlipSide = false;
+
         // ---- Risque et execution simulee
         public int MaxTradesPerDay = 3;
         public int MaxLossesPerDay = 2;
         public double SlippageTicks = 1;                // chaque execution (entree et sortie) au marche, 1 tick contre soi
+
+        /// Copie independante (grille de configurations).
+        public EngineSettings Clone() => (EngineSettings)MemberwiseClone();
 
         /// Decale toutes les heures de seance (barres a l'heure de Chicago : -60).
         public void ShiftClock(int minutes)

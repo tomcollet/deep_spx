@@ -430,5 +430,78 @@ for (int pass = 0; pass < 2; pass++)
         Math.Abs(h1slip.BreakEvenPct - 45) < 1e-9, h1slip.Trades + " trades, " + h1slip.AvgTicks + ", seuil " + h1slip.BreakEvenPct);
 }
 
+// ================================================================ 13. Objectif a 2R et controle en sens inverse (scenario 2)
+foreach (var variant in new[] { "2R", "inverse" })
+{
+    var st = Chicago();
+    if (variant == "2R") { st.TargetMode = 1; st.TargetR = 2.0; } else st.FlipSide = true;
+    var e = new SetupEngine(st);
+    int idx = 0;
+    double nf = 0;
+    Run(e, CalmDay(day1, i => G(5100, 5060, 4970, -1e9, nf += 1), ref idx));
+    var bars = new List<BarInput>();
+    for (int m = 0; m < 30; m++) bars.Add(Bar(day2, 510 + m, 5002, 5004, 5000, 5002, 10, G(5100, 5060, 4970, -1e9, nf += 1), ref idx));
+    for (int m = 30; m < 40; m++) bars.Add(Bar(day2, 510 + m, 5002, 5003, 5001, 5002, 10, G(5100, 5060, 4970, -1e9, nf += 1), ref idx));
+    bars.Add(Bar(day2, 550, 5003, 5007, 5003, 5006, 600, G(5100, 5060, 4970, -1e9, nf += 1), ref idx));
+    bars.Add(Bar(day2, 551, 5006.5, 5010, 5006, 5009, 50, G(5100, 5060, 4970, -1e9, nf += 1), ref idx));
+    bars.Add(Bar(day2, 552, 5009, 5014, 5008, 5013, 50, G(5100, 5060, 4970, -1e9, nf += 1), ref idx));
+    bars.Add(Bar(day2, 553, 5013, 5021, 5012, 5020.5, 50, G(5100, 5060, 4970, -1e9, nf += 1), ref idx));
+    Run(e, bars);
+    var sg = e.Signals.FirstOrDefault();
+    if (variant == "2R")
+        Check("Objectif 2R : entree attendue 5006,25, risque 13 ticks -> objectif 5012,75, atteint", sg != null && sg.Target == 5012.75 && sg.Exit == ExitReason.Target,
+            sg == null ? "aucun signal" : sg.Target + " " + sg.Exit);
+    else
+        Check("Sens inverse : vente, stop 5009 et objectif 4992 en miroir, stoppee par la hausse", sg != null && sg.Side == Side.Short && sg.Stop == 5009 && sg.Target == 4992 &&
+            sg.Exit == ExitReason.Stop && sg.ResultTicks < 0, sg == null ? "aucun signal" : sg.Side + " " + sg.Stop + " " + sg.Target + " " + sg.Exit + " " + sg.ResultTicks);
+}
+
+// ================================================================ 14. Optimizer sur un marche synthetique ou seul le setup B a un avantage
+// 60 seances de fevrier a avril 2026 (New York), plus 5 seances apres le 16/08 (holdout d'A/B/C, a exclure). Short gamma
+// tous les jours. Range d'ouverture 5000-5004, cassure a 10:10 avec un delta extreme, puis hausse jusqu'a 5030.
+{
+    var st = new EngineSettings();
+    var opt = new Optimizer(st, new OptimizerSettings());
+    int idx = 0;
+    double nf = 0;
+    var days = new List<DateTime>();
+    for (var d = new DateTime(2026, 2, 2); days.Count < 60; d = d.AddDays(1))
+        if (d.DayOfWeek != DayOfWeek.Saturday && d.DayOfWeek != DayOfWeek.Sunday) days.Add(d);
+    for (var d = new DateTime(2026, 8, 17); days.Count < 65; d = d.AddDays(1))
+        if (d.DayOfWeek != DayOfWeek.Saturday && d.DayOfWeek != DayOfWeek.Sunday) days.Add(d);
+    foreach (var day in days)
+    {
+        double price = 5002;
+        for (int m = 0; m < 390; m++)
+        {
+            double o = price, c = price, h, l;
+            long delta = m % 2 == 0 ? 10 : -10;
+            if (m < 40) { o = 5002; c = 5002; h = 5004; l = 5000; }
+            else if (m == 40) { o = 5003; c = 5006; h = 5007; l = 5003; delta = 800; }           // 10:10 : cassure
+            else if (m <= 52) { o = price; c = Math.Min(5030, price + 2.25); h = c + 0.25; l = o - 0.25; }
+            else { h = price + 0.5; l = price - 0.5; }
+            price = c;
+            nf += 1;
+            opt.OnBar(new BarInput
+            {
+                Index = idx++, Time = day.AddMinutes(9 * 60 + 30 + m), Open = o, High = h, Low = l, Close = c,
+                Volume = 400 + Math.Abs(delta), AskVolume = 200 + Math.Max(0, delta), BidVolume = 200 + Math.Max(0, -delta),
+                Gamma = new GammaInput { ZeroGamma = 5200 + idx * 0.001, MajorGamma = 5300, MinorGamma = 4900, SummaryRegime = -1e9 - idx, NetFlow = nf, MmPressure = 1 }
+            });
+        }
+    }
+    Check("Optimizer : 64 configurations (A 24, B 36, C 4)", opt.Configs.Count == 64 && opt.Configs.Count(c => c.Setup == "A") == 24 &&
+        opt.Configs.Count(c => c.Setup == "B") == 36 && opt.Configs.Count(c => c.Setup == "C") == 4, opt.Configs.Count.ToString());
+    Check("Optimizer : 60 seances avant le 16/08, les 5 du holdout exclues ; recherche 36 / validation 24",
+        opt.SessionDates.Count == 60 && opt.DiscoverySessions == 36, opt.SessionDates.Count + " / " + opt.DiscoverySessions);
+    var topB = opt.Select("B");
+    Check("Optimizer : 3 configurations B classees, la premiere retenue", topB.Count == 3 && topB[0].Retained, topB.Count == 0 ? "aucune" : topB[0].Reason);
+    Check("Optimizer : la premiere B gagne en recherche et en validation, son sens inverse perd",
+        topB.Count > 0 && topB[0].Discovery.AvgTicks > 1 && topB[0].Validation.AvgTicks > 1 && topB[0].ValidationFlipped.AvgTicks < 0,
+        topB.Count == 0 ? "" : topB[0].Discovery.AvgTicks + " / " + topB[0].Validation.AvgTicks + " / " + topB[0].ValidationFlipped.AvgTicks);
+    Check("Optimizer : aucun trade A ni C (jamais de long gamma) -> rien a classer", opt.Select("A").Count == 0 && opt.Select("C").Count == 0);
+    Check("Optimizer : aucun trade compte apres le 16/08", opt.Configs.All(c => c.Trades.All(t => t.Session < 60)));
+}
+
 Console.WriteLine(failures == 0 ? "\nTous les controles sont OK." : "\n" + failures + " controle(s) en echec.");
 return failures == 0 ? 0 : 1;

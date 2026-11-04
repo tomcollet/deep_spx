@@ -192,6 +192,24 @@ namespace DeepSpx.Engine
                     s = TryWallReject(bar, delta, deltaRank, atr5, tick);
                 if (s == null && S.EnableContinuation && Regime == Regime.ShortGamma)
                     s = TryContinuation(bar, delta, deltaRank, atr5, tick);
+                if (s != null && S.TargetMode == 1 && s.Kind != SetupKind.Pin)
+                {
+                    // objectif a TargetR fois le risque depuis l'entree attendue
+                    double e0 = bar.Close + (int)s.Side * S.SlippageTicks * tick;
+                    double r0 = (int)s.Side * (e0 - s.Stop);
+                    if (r0 > 0) s.Target = RoundTarget(s.Side, e0 + (int)s.Side * S.TargetR * r0, tick);
+                }
+                if (s != null && S.FlipSide)
+                {
+                    // controle : sens inverse, distances conservees, en miroir autour de l'entree attendue
+                    double e0 = bar.Close + (int)s.Side * S.SlippageTicks * tick;
+                    double stopDist = (int)s.Side * (e0 - s.Stop), targetDist = (int)s.Side * (s.Target - e0);
+                    var flipped = s.Side == Side.Long ? Side.Short : Side.Long;
+                    double e1 = bar.Close + (int)flipped * S.SlippageTicks * tick;
+                    s.Side = flipped;
+                    s.Stop = RoundStop(flipped, e1 - (int)flipped * stopDist, tick);
+                    s.Target = RoundTarget(flipped, e1 + (int)flipped * targetDist, tick);
+                }
                 if (s != null)
                 {
                     // Regle de risque : entree attendue = cloture + glissement

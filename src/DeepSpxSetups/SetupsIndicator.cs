@@ -32,7 +32,7 @@ namespace DeepSpx.Setups
     public class SetupsIndicator : VolSysAPI.Indicators.Indicator
     {
         public const string Prefix = "DSPX;";
-        public const string Version = "1.6";
+        public const string Version = "1.7";
 
         public static IndicatorDescriptionBase Register() =>
             new IndicatorDescriptionBase
@@ -55,12 +55,32 @@ namespace DeepSpx.Setups
         public int MaxRiskTicks { get; set; } = 25;
         public double MinRewardRisk { get; set; } = 1.5;
         /// Etude des scalps (research/scalp_flux/PREREG.md) sur l'historique charge, affichee dans le panneau.
-        public bool ShowStudy { get; set; } = true;
+        /// Etude close le 04/11/2026 (echec, research/scalp_flux/RESULTATS.md) : desactivee par defaut.
+        public bool ShowStudy { get; set; } = false;
         /// Seances etudiees : de StudyStartDate (inclus, 0 = debut de l'historique) a StudyEndDate (exclu), au format
         /// AAAAMMJJ. Decision de Tom du 04/11/2026 : holdout ouvert pour les scalps, recherche et validation jusqu'au
         /// 04/11 inclus ; les seances live a partir du 05/11 sont le test final et ne doivent pas entrer dans l'etude.
         public int StudyStartDate { get; set; } = 0;
         public int StudyEndDate { get; set; } = 20261105;
+
+        /// Recherche de configuration A/B/C (research/optim_abc/PREREG.md) : 64 configurations et leur controle en sens
+        /// inverse, rejouees sur l'historique charge, par tranches de OptBudgetMs millisecondes pour ne pas figer
+        /// Deepchart (OptSynchronous : tout d'un coup au chargement). Seances de OptStartDate (inclus) a OptEndDate
+        /// (exclu, AAAAMMJJ) : 20260816, le holdout d'A/B/C reste scelle.
+        public bool RunOptimizer { get; set; } = true;
+        public int OptStartDate { get; set; } = 0;
+        public int OptEndDate { get; set; } = 20260816;
+        public int OptBudgetMs { get; set; } = 250;
+        public bool OptSynchronous { get; set; } = false;
+
+        /// Reglages du setup en live (la configuration retenue par la recherche s'y reporte). Valeurs par defaut : v1.6.
+        public double TransitionAtr { get; set; } = 0.5;
+        public int TargetMode { get; set; } = 0;         // 0 structurel, 1 TargetR fois le risque
+        public double TargetR { get; set; } = 2.0;
+        public double AbsorbPct { get; set; } = 90;
+        public double VwapDevAtr { get; set; } = 1.5;
+        public double BreakDeltaPct { get; set; } = 80;
+        public double StopAtr { get; set; } = 1.0;
         /// Ajoute OptionOffsetPrice de la barre aux niveaux DeepGamma (si les niveaux sont en prix SPX et non ES)
         public bool ApplyOptionOffset { get; set; } = false;
         /// Numeros forces des indicateurs DeepGamma (-1 : reperage automatique par le nom)
@@ -92,6 +112,11 @@ namespace DeepSpx.Setups
         private static readonly CultureInfo IC = CultureInfo.InvariantCulture;
         private SetupEngine _engine;
         private ScalpStudy _study;
+        private Optimizer _opt;
+        private List<BarInput> _optBars;
+        private int _optPos;
+        private bool _optDone;
+        private List<string> _optLines;
         private List<string> _studyLines;
         private int _studyCount = -1;
         private bool _historyDone;
@@ -142,22 +167,34 @@ namespace DeepSpx.Setups
                     _tick = DetectTick();
                     DetectClock();
                     _engine = new SetupEngine(BuildSettings());
-                    _study = new ScalpStudy(_engine.Settings, BuildStudySettings());
+                    _study = ShowStudy ? new ScalpStudy(_engine.Settings, BuildStudySettings()) : null;
                     _studyLines = null;
+                    _opt = null; _optBars = null; _optPos = 0; _optDone = false; _optLines = null;
+                    if (RunOptimizer)
+                    {
+                        _opt = new Optimizer(_engine.Settings, new OptimizerSettings
+                        {
+                            Start = ToDate(OptStartDate, DateTime.MinValue),
+                            End = ToDate(OptEndDate, new DateTime(2026, 8, 16))
+                        });
+                        _optBars = new List<BarInput>(Math.Max(16, VAn.BarIndex));
+                    }
                     MapGamma();
                     int last = VAn.BarIndex - 1;              // la derniere barre est encore ouverte
                     for (int b = 0; b <= last; b++) Process(b);
                     Log("HIST", new[] { "bars=" + (last + 1), "signals=" + _engine.Signals.Count, "map=" + _mapText,
                         "clock=" + (_chicago ? "Chicago" : "NewYork"), "session=" + _engine.Settings.SessionText(),
                         "refuses_risque=" + _engine.RejectedRisk, "refuses_objectif=" + _engine.RejectedReward });
-                    LogStudy();
+                    if (_study != null) LogStudy();
+                    if (_opt != null && OptSynchronous) RunOptimizerSlice(int.MaxValue);
                     UpdatePanel();
                     return;
                 }
                 if (isRt)
                 {
                     _endRt++;
-                    if (_endRt % 25 == 1) UpdatePanel();
+                    if (_opt != null && !_optDone) { RunOptimizerSlice(OptBudgetMs); UpdatePanel(); }
+                    else if (_endRt % 25 == 1) UpdatePanel();
                 }
             }
             catch (Exception ex) { Log("ERR", new[] { "OnEnd", ex.Message ?? "" }); }
@@ -176,8 +213,9 @@ namespace DeepSpx.Setups
                     if ((_envId < 0 || _sumId < 0 || _nfId < 0) && _rtCloses % 15 == 1) MapGamma();
                     Process(b);
                     LogLag(b);
+                    if (_opt != null && !_optDone) RunOptimizerSlice(OptBudgetMs);
                     if (_rtCloses % 5 == 1) LogState(b);     // etat repete : le fichier lu par read_log_window.py le contient toujours
-                    if (_rtCloses % 60 == 1) LogStudy();
+                    if (_rtCloses % 60 == 1 && _study != null) LogStudy();
                     UpdatePanel();
                 }
             }
@@ -199,6 +237,13 @@ namespace DeepSpx.Setups
                 MaxTradesPerDay = MaxTradesPerDay,
                 MaxRiskTicks = MaxRiskTicks,
                 MinRewardRisk = MinRewardRisk,
+                TransitionAtr = TransitionAtr,
+                TargetMode = TargetMode,
+                TargetR = TargetR,
+                AbsorbPct = AbsorbPct,
+                VwapDevAtr = VwapDevAtr,
+                BreakDeltaPct = BreakDeltaPct,
+                StopAtr = StopAtr,
                 MaxLossesPerDay = MaxLossesPerDay,
                 SlippageTicks = SlippageTicks
             };
@@ -294,6 +339,7 @@ namespace DeepSpx.Setups
             ReadGamma(b, bar, input.Gamma);
             _engine.OnBar(input);
             if (_study != null) _study.OnBar(input, _engine);
+            if (_optBars != null && !_optDone && input.Time.Date < _opt.Settings.End.Date) _optBars.Add(input);
             _lastProcessed = b;
 
             foreach (var s in _engine.NewExits) OnExit(s);
@@ -532,6 +578,7 @@ namespace DeepSpx.Setups
                 if (e.RejectedRisk + e.RejectedReward > 0)
                     lines.Add("Refuses par la regle de risque (" + MaxRiskTicks + " ticks, " + MinRewardRisk.ToString("0.0#", IC) + "R) : " +
                               e.RejectedRisk + " pour le risque, " + e.RejectedReward + " pour l'objectif");
+                if (_opt != null) lines.AddRange(OptimizerLines());
                 if (ShowStudy && _study != null)
                 {
                     int count = _study.SessionDates.Count;
@@ -550,6 +597,103 @@ namespace DeepSpx.Setups
                 for (int i = 0; i < _panel.Count; i++) _panel[i].Text = i < lines.Count ? lines[i] : "";
             }
             catch { }
+        }
+
+        // ------------------------------------------------------------ recherche de configuration A/B/C
+        /// Rejoue des barres stockees jusqu'a epuisement du budget de temps (pas de thread dans le bac a sable).
+        private void RunOptimizerSlice(int budgetMs)
+        {
+            if (_opt == null || _optDone || _optBars == null) return;
+            try
+            {
+                var t0 = DateTime.UtcNow;
+                while (_optPos < _optBars.Count)
+                {
+                    int stop = Math.Min(_optBars.Count, _optPos + 200);
+                    for (; _optPos < stop; _optPos++) _opt.OnBar(_optBars[_optPos]);
+                    if ((DateTime.UtcNow - t0).TotalMilliseconds >= budgetMs) return;
+                }
+                _optDone = true;
+                _optBars = null;                                  // libere la memoire
+                _optLines = BuildOptimizerLines();
+                LogOptimizer();
+                UpdatePanel();
+            }
+            catch (Exception ex) { Log("ERR", new[] { "Optimizer", ex.Message ?? "" }); _optDone = true; _optBars = null; }
+        }
+
+        private List<string> OptimizerLines()
+        {
+            if (_optDone && _optLines != null) return _optLines;
+            int total = _optBars != null ? _optBars.Count : 0;
+            double pct = total > 0 ? 100.0 * _optPos / total : 0;
+            return new List<string> { "Optimisation A/B/C : " + pct.ToString("0", IC) + " % (" + _optPos + " / " + total + " barres, " +
+                                      _opt.Configs.Count + " configurations et leur sens inverse)" };
+        }
+
+        private List<string> BuildOptimizerLines()
+        {
+            var o = _opt;
+            var lines = new List<string>();
+            int n = o.SessionDates.Count;
+            double volPct = o.RthBars > 0 ? 100.0 * o.RthBarsWithVolume / o.RthBars : 0;
+            if (n == 0)
+            {
+                lines.Add("Optimisation A/B/C : aucune seance avec DeepGamma avant le " + o.Settings.End.ToString("dd/MM/yyyy", IC) + " dans l'historique charge");
+                return lines;
+            }
+            lines.Add("Optimisation A/B/C : " + n + " seances avec DeepGamma du " + o.SessionDates[0].ToString("dd/MM/yyyy", IC) + " au " +
+                      o.SessionDates[n - 1].ToString("dd/MM/yyyy", IC) + ", recherche " + o.DiscoverySessions + " / validation " + (n - o.DiscoverySessions) +
+                      ", volumes ask/bid sur " + volPct.ToString("0", IC) + " % des barres (holdout du 16/08 scelle)");
+            foreach (var setup in new[] { "A", "B", "C" })
+            {
+                var top = o.Select(setup);
+                if (top.Count == 0)
+                {
+                    lines.Add("  " + setup + " : aucune configuration a " + o.Settings.MinTrades + " trades ou plus en recherche");
+                    continue;
+                }
+                OptVerdict show = null;
+                foreach (var v in top) if (v.Retained) { show = v; break; }
+                bool any = show != null;
+                if (show == null) show = top[0];
+                lines.Add("  " + setup + " #" + show.Rank + " : " + show.Config.Label + "  ->  " + (any ? "RETENUE" : "aucune des " + top.Count + " premieres retenue (" + show.Reason + ")"));
+                var d = show.Discovery;
+                var v2 = show.Validation;
+                lines.Add("     recherche " + d.Trades + " tr, " + Pct(d.WinPct) + " (seuil " + Pct(d.BreakEvenPct) + "), " + Ticks(d.AvgTicks) + " t/tr, IC " +
+                          Ticks(d.CiLow) + " a " + Ticks(d.CiHigh) + ", total " + Ticks(d.TotalTicks) + " t  |  validation " + v2.Trades + " tr, " +
+                          Pct(v2.WinPct) + ", " + Ticks(v2.AvgTicks) + " t/tr, sens inverse " + Ticks(show.ValidationFlipped.AvgTicks));
+            }
+            return lines;
+        }
+
+        private void LogOptimizer()
+        {
+            var o = _opt;
+            int n = o.SessionDates.Count;
+            // toute la grille, en recherche seulement (la validation des autres n'est jamais regardee)
+            int i = 0;
+            foreach (var c in o.Configs)
+            {
+                i++;
+                var d = o.Result(c.Trades, 1, 0, i);
+                Log("OPTALL", new[] { c.Setup, c.Label, "recherche_trades=" + d.Trades, "win=" + Pct(d.WinPct), "avg=" + Ticks(d.AvgTicks),
+                    "ci95=" + Ticks(d.CiLow) + "/" + Ticks(d.CiHigh), "total=" + Ticks(d.TotalTicks) });
+            }
+            Log("OPTINFO", new[] { "sessions=" + n, "first=" + (n > 0 ? o.SessionDates[0].ToString("yyyy-MM-dd", IC) : "-"),
+                "last=" + (n > 0 ? o.SessionDates[n - 1].ToString("yyyy-MM-dd", IC) : "-"), "recherche=" + o.DiscoverySessions,
+                "end_exclusive=" + o.Settings.End.ToString("yyyy-MM-dd", IC), "rth_bars=" + o.RthBars,
+                "rth_bars_with_volume=" + o.RthBarsWithVolume, "configs=" + o.Configs.Count });
+            foreach (var setup in new[] { "A", "B", "C" })
+                foreach (var v in o.Select(setup))
+                {
+                    var d = v.Discovery;
+                    var w = v.Validation;
+                    Log("OPTRANK", new[] { setup, "#" + v.Rank, v.Config.Label,
+                        "recherche=" + d.Trades + "tr/" + Pct(d.WinPct) + "/seuil " + Pct(d.BreakEvenPct) + "/" + Ticks(d.AvgTicks) + "t/IC " + Ticks(d.CiLow) + " a " + Ticks(d.CiHigh) + "/total " + Ticks(d.TotalTicks),
+                        "validation=" + w.Trades + "tr/" + Pct(w.WinPct) + "/seuil " + Pct(w.BreakEvenPct) + "/" + Ticks(w.AvgTicks) + "t/total " + Ticks(w.TotalTicks),
+                        "inverse=" + Ticks(v.ValidationFlipped.AvgTicks), v.Reason });
+                }
         }
 
         // ------------------------------------------------------------ etude des scalps

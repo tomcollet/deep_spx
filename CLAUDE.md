@@ -84,5 +84,8 @@ travail : **français** (docs, commentaires, messages de commit).
 4. Étude des scalps faite le 04/11 (41 séances) : **échec d'H1 et d'H2**, piste close
    (`research/scalp_flux/RESULTATS.md`). Ne pas retester de variante sur ces 41 séances. Reste ouvert : le carnet
    (enregistrement live à faire).
-5. Ensuite : enregistreur par minute (étape 2) et backtest C# en ligne de commande réutilisant `Engine/`, puis une étude
-   préenregistrée par setup A/B/C sur les séances d'avant le 16/08/2026.
+5. Recherche de configuration A/B/C (`research/optim_abc/PREREG.md`, v1.7, demande de Tom du 04/11) : Tom charge
+   1 an en minutes ; l'indicateur classe 64 configurations sur les séances d'avant le 16/08 (60 % recherche, 40 %
+   validation, 3 premières par setup seulement en validation). Appliquer la règle de sélection du PREREG telle quelle,
+   sans élargir la grille sur ces séances. Holdout d'A/B/C ouvert seulement sur décision de Tom.
+6. Ensuite : enregistrement du carnet en live, backtest C# en ligne de commande réutilisant `Engine/`.
