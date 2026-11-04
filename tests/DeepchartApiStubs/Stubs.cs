@@ -135,36 +135,66 @@ namespace VolumetricaAPI.Chart
 
 namespace VolumetricaAPI
 {
-    public enum LogLevelEnum { Debug, Information, Warning, Error }
+    public enum LogLevelEnum { Verbose = 0, Information = 1, Warning = 2, Error = 3 }
 }
 
+// Aligne sur deepchart-api.txt (VolumetricaCore 1.0.0.0, VolSysAPI 1.4.6.0, sortie de tools/ApiDump, 04/11/2026).
+// Seuls les membres utiles au projet sont repris ; les espaces de noms des types de VolumetricaCore ne sont pas dans
+// l'inventaire et suivent les using des exemples officiels.
 namespace VolumetricaAPI.Connection
 {
     public static class Structure
     {
-        public enum AggressorSideEnum { Ask, Bid, Between }
+        public enum AggressorSideEnum { Between = 0, Bid = -1, Ask = 1 }
+
+        [System.Flags]
+        public enum TradeTypeEnum { None = 0, Regular = 1, Iceberg = 2, SweepOrder = 4, Auction = 8, Extended = 16, OddTrade = 32, AfterHour = 64, VolumeOnly = 128 }
+
+        public enum MboFlagsEnum { None = 0, Iceberg = 1 }
 
         public class TickByTick
         {
-            public double price;
-            public int PinT;
-            public int Vol;
+            public System.DateTime exDt, locDt;
+            public double price, bid, ask;
+            public int QtyOrd, Vol;
+            public long CumVol;
+            public ulong AggrID, RestID;
+            public TradeTypeEnum TradeType;
+            public int CounterSize, PinT;
+            public double SubDouble;
+            public bool IsRtRecived, IntPriceCalc;
             public AggressorSideEnum AggrSide;
-            public double bid, ask;
-            public System.DateTime exDt;
+            public bool IsNewDay;
         }
 
-        public class MbpUpdate
+        /// Un niveau de prix du carnet (MBP)
+        public class BookInfo
         {
-            public int PinT;
-            public bool isAsk;
+            public double Price;
+            public int PinT, Qty, DiffQty, NumOffers;
+            public bool isAsk, IsShiftOutside;
+            public int TempDiff, MboMaxQty;
+        }
+
+        /// Un ordre du carnet (MBO)
+        public class MboInfo
+        {
+            public ulong OrderId;
+            public bool IsAsk;
             public int Qty;
+            public double Price;
+            public int PinT, MaxQty, CumFillQty;
+            public MboFlagsEnum Flags;
         }
 
         public class BookUpdate
         {
-            public bool NeedResetMbp;
-            public List<MbpUpdate> MbpUpdates;
+            public bool NeedResetMbp, NeedResetMbo;
+            public double BestBidPrice, BestAskPrice;
+            public int BestBidInT, BestAskInT;
+            public System.DateTime exDt, appDt;
+            public List<BookInfo> MbpUpdates;
+            public List<MboInfo> MboUpdates;
         }
     }
 }
@@ -173,7 +203,7 @@ namespace VolSysAPI
 {
     public static class ExternalStructure
     {
-        public enum CallHandler { Off, RT, HistRT }
+        public enum CallHandler { Off = 0, HistRT = 1, RT = 2 }
 
         public class IndicatorDescriptionBase
         {
@@ -183,15 +213,47 @@ namespace VolSysAPI
             public List<string> Tags { get; set; }
         }
 
-        public class AggrInfo { }
+        public class Series_Prop
+        {
+            public string Name { get; set; }
+            public string ShortName { get; set; }
+        }
+
+        /// Ce que renvoie GetParamsById : reglages d'un indicateur du graphique
+        public class BaseIndicatorPrms
+        {
+            public HashSet<string> HiddenProp;
+            public string name { get; set; }
+            public bool Hidden { get; set; }
+            public string ReferenceGuid { get; set; }
+            public List<Series_Prop> v_series { get; set; }
+        }
     }
 
     public static class Structure
     {
+        public enum ChartPhaseEnum { HistoricalFull = 1, Backtesting = 2, HistoricalPartial = 4, Realtime = 8, RealtimeFlushing = 16 }
+
+        public enum TradeDirStatus { Ask = 0, Bid = 1, BelowBid = 2, AboveAsk = 3, Unknown = 4 }
+
+        /// Trade agrege (avec SetCalculateAggrTrades)
+        public class AggrInfo
+        {
+            public int PinT;
+            public TradeDirStatus TradeDir;
+            public int Vol, MaxQtyOrd, NumberOfTrades;
+            public double StartPrice, EndPrice, AvgPrice;
+        }
+
         public class InfoVolClass
         {
-            public int TotVol, AskVol, BidVol;
+            public int CumDeltaVol;
+            public long Countervalue;
             public double VwapPrice;
+            public long BidVol, AskVol;
+            public int AskNTVol, BidNTVol;
+            public long TotVol;
+            public int TotNTVol;
         }
 
         public class VbpLevel
@@ -201,54 +263,107 @@ namespace VolSysAPI
 
         public class BarClass
         {
-            public double Open, High, Low, Close;
-            public int OpenInT, HighInT, LowInT, CloseInT;
-            public System.DateTime exchDt, dt;
+            public System.DateTime dt, exchDt;
+            public int Index;
+            public double Open, Close, High, Low, Ask, Bid, LastAsk, LastBid;
+            public int OpenInT, CloseInT, HighInT, LowInT;
+            public System.DateTime lastDtInBar;
             public bool IsNewDay;
-            public int SessionIndex, Index;
-            public List<InfoVolClass> VolTotList;
+            public int SessionIndex;
             public List<int> PriceList;
+            public InfoVolClass[] VolTotList;
             public Dictionary<int, VbpLevel[]> VbpListAll;
+            public double? OptionOffsetPrice;
         }
     }
 
-    public class PriceInfo
+    public struct DoubleP
     {
         public double Price;
+        public int AddInt, SubInt;
+        public double AddDouble;
     }
 
     public interface IMethodAPI
     {
         static ColorRef GetColorRefForTheme(ColorReferenceEnum reference, ColorTypeEnum type, object range = null) => new ColorRef();
+
+        string ChartName { get; }
+        string SymbolName { get; }
+        string SymbolFullName { get; }
+        bool IsReplayData { get; }
+        List<Structure.BarClass> BarVars { get; }
+        int BarIndex { get; }
+        System.DateTime LastExDt { get; }
+        Structure.ChartPhaseEnum ChartPhase { get; }
+        VolumetricaAPI.Connection.Structure.BookUpdate RebuildDom();
+        void SetCalculateAggrTrades();
+        int LastIndex();
+        DoubleP FromPinT(int pInT);
+        int GetDoubleTicksDiff(double IniPrice, double EndPrice);
+        double DoubleAddSubTicks(double Price, int Tick);
+        void ShowMessage(string Text, string Title);
+        void PlayAlert(string AlertName);
+        ExternalStructure.BaseIndicatorPrms GetParamsById(int IndicatorIndex);
+        double[] GetSeriesValueById(int IndicatorIndex, int SubgraphIndex, int Index);
+        void AddToLog(string message, VolumetricaAPI.LogLevelEnum logLevel = VolumetricaAPI.LogLevelEnum.Information, string source = null, bool? showToast = null);
     }
 
     public interface IMethodCloudAPI : IMethodAPI
     {
-        List<Structure.BarClass> BarVars { get; }
-        int BarIndex { get; }
-        int LastIndex();
-        string SymbolName { get; }
-        string ChartName { get; }
-        System.DateTime LastExDt { get; }
-        IChartPoint AddPointToSeries(IChartSeries series, int indexBar, double yValue = 0, bool IsHidden = false, bool isBreak = false);
-        IAnnotation CreateAnnotation(AnnotationType annotationType);
+        IChartPoint AddPointToSeries(IChartSeries Series, int IndexBar, double YValue = 0, bool IsHidden = false, bool IsBreak = false);
+        IAnnotation CreateAnnotation(AnnotationType annType);
         IAnnGroup CreateAnnGroup();
-        void AddAnnotation(IAnnGroup group, IAnnotation annotation);
-        PriceInfo FromPinT(int pinT);
-        double GetDoubleTicksDiff(double from, double to);
-        double DoubleAddSubTicks(double price, int ticks);
-        void ShowMessage(string text, string title);
-        void PlayAlert(string alertName);
-        VolumetricaAPI.Connection.Structure.BookUpdate RebuildDom();
-        void AddToLog(string message, VolumetricaAPI.LogLevelEnum level, string source = null, bool? showToast = null);
+        void AddAnnotation(IAnnGroup AnnGroup, IAnnotation NewAnn);
+    }
 
-        // Ajouts deep_spx. Documentés dans docs/reference/chart-api du dépôt officiel ; types exacts à confirmer par
-        // tools/ApiDump (deepchart-api.txt).
-        bool IsReplayData { get; }
-        object ChartPhase { get; }
-        // Appel GetSeriesValueById(3, 0, barIndex), trois int, vu dans l'issue #4 du dépôt officiel (code compilé
-        // contre les vraies dll). Type de retour non documenté : double ici.
-        double GetSeriesValueById(int indicator, int series, int index);
+    // API d'ordres (desktop). Espace de noms reel non visible dans l'inventaire.
+    public enum OrderTypeEnum { Market = 0, Limit = 1, Stop = 2, StopLimit = 3 }
+    public enum OrderStatusEnum { Submitted = 0, PendingRequest = 1, PendingCancel = 2, PendingModify = 3, Filled = 4, Canceled = 5, Internal = 6, Failed = 7, Waiting = 8 }
+
+    public class BracketParam
+    {
+        public decimal Quantity { get; set; }
+        public int? Ticks { get; set; }
+        public double? Price { get; set; }
+        public bool IsTarget { get; set; }
+    }
+
+    public class OrderInsertRequest
+    {
+        public OrderTypeEnum OrderType { get; set; }
+        public decimal Quantity { get; set; }
+        public double? Price { get; set; }
+        public List<BracketParam> Brackets { get; set; }
+        public long? RefPositionId { get; set; }
+        public int? BarsExpiration { get; set; }
+    }
+
+    public class OrderStatusInfo
+    {
+        public long OriginalOrderId { get; set; }
+        public long OrderId { get; set; }
+        public decimal PendingQuantity { get; set; }
+        public decimal FilledQuantity { get; set; }
+        public OrderTypeEnum OrderType { get; set; }
+        public OrderStatusEnum OrderStatus { get; set; }
+    }
+
+    public interface ITradingAPI
+    {
+        decimal PositionNetQuantity { get; }
+        decimal PositionBuyQuantity { get; }
+        decimal PositionSellQuantity { get; }
+        long InsertOrder(OrderInsertRequest param, ref string reason);
+        long ModifyOrderPrice(long orderId, double price, ref string reason);
+        long ModifyOrderQuantity(long orderId, decimal quantity, ref string reason);
+        bool RemoveOrder(long orderId, ref string reason);
+        long InsertBracket(long orderId, BracketParam param, ref string reason);
+        bool FlatPosition(long positionId, ref string reason);
+        void FlatAllPositions();
+        void CancelAllOrders();
+        List<OrderStatusInfo> GetAllOrdersStatus();
+        OrderStatusInfo GetOrderInfo(long orderId);
     }
 }
 
@@ -256,6 +371,7 @@ namespace VolSysAPI.Indicators
 {
     using VolSysAPI;
     using static VolSysAPI.ExternalStructure;
+    using static VolSysAPI.Structure;
 
     public class IndVarsClass
     {
@@ -278,6 +394,8 @@ namespace VolSysAPI.Indicators
         public bool NeedVbp { get; set; }
         public string Description { get; set; }
         public string StatusMessage { get; set; }
+        protected ITradingAPI TradingApi { get; }
+        public int getId() => 0;
 
         public abstract void OnSet(bool setDefault, bool themeOverride);
         public virtual void OnPreInit() { }

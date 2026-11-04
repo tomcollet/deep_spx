@@ -13,6 +13,12 @@
 //    Q6  Le graphique est-il un replay (VAn.IsReplayData) ?
 //    Q7  En live, les series DeepGamma valent-elles 0 (issue #4 du depot
 //        officiel) ?
+//    Q8  Le carnet arrive-t-il aussi ordre par ordre (MBO : MboUpdates,
+//        NumOffers, AggrID/RestID des trades) ?
+//
+//  Signatures relevees dans deepchart-api.txt (tools/ApiDump, VolSysAPI
+//  1.4.6.0) : GetSeriesValueById(int, int, int) -> double[] ;
+//  GetParamsById(int) -> BaseIndicatorPrms (name, v_series).
 //
 //  Deepchart refuse de charger une DLL qui utilise reflexion, fichiers,
 //  reseau, threads, lock, Environment... (docs/troubleshooting). La sonde
@@ -42,7 +48,7 @@ namespace DeepSpx.Probe
     public class DeepGammaProbe : VolSysAPI.Indicators.Indicator
     {
         public const string Prefix = "DSPX;";
-        public const string Version = "2";
+        public const string Version = "3";
 
         public static IndicatorDescriptionBase Register() =>
             new IndicatorDescriptionBase
@@ -76,6 +82,7 @@ namespace DeepSpx.Probe
             public double Min = double.MaxValue, Max = double.MinValue;
             public string First = "", Last = "";
             public int RtReads, RtZeros;               // Q7
+            public int Points;                         // valeurs par point (longueur du tableau renvoye)
         }
 
         private readonly List<SeriesStat> _readable = new List<SeriesStat>();
@@ -88,11 +95,12 @@ namespace DeepSpx.Probe
         private int _historyLastIndex, _histBarsScanned, _bookExamples, _snapshotTries, _rtDiscoveryTries, _rtMinutes;
         private long _nOpenHist, _nOpenRt, _nCloseHist, _nCloseRt, _nEndHist, _nEndRt;
         private long _nTickHist, _nTickRt, _nBook, _nBookResets;
+        private long _nMbo, _nMboResets, _nLevelsWithOffers, _nTicksWithIds, _nIcebergTicks, _nSweepTicks;
         private int _maxBidLevels, _maxAskLevels, _maxDepthTicks;
         private DateTime _lastSummaryExch;
 
         // Statistiques de la minute en cours (temps reel)
-        private long _mBookUpdates, _mBookResets, _mTicks, _mVol, _mAskVol, _mBidVol;
+        private long _mBookUpdates, _mBookResets, _mTicks, _mVol, _mAskVol, _mBidVol, _mMbo, _mTicksWithIds;
 
         // ------------------------------------------------------------ cycle de vie
         public override void OnSet(bool setDefault, bool themeOverride)
@@ -113,6 +121,7 @@ namespace DeepSpx.Probe
             _histBarsScanned = _bookExamples = _snapshotTries = _rtDiscoveryTries = _rtMinutes = 0;
             _nOpenHist = _nOpenRt = _nCloseHist = _nCloseRt = _nEndHist = _nEndRt = 0;
             _nTickHist = _nTickRt = _nBook = _nBookResets = 0;
+            _nMbo = _nMboResets = _nLevelsWithOffers = _nTicksWithIds = _nIcebergTicks = _nSweepTicks = 0;
             _maxBidLevels = _maxAskLevels = _maxDepthTicks = 0;
             _lastSummaryExch = DateTime.MinValue;
             ResetMinute();
@@ -123,12 +132,14 @@ namespace DeepSpx.Probe
                 "chart=" + Safe(() => VAn.ChartName),
                 "replay=" + Safe(() => Convert.ToString(VAn.IsReplayData, IC)),
                 "phase=" + Safe(() => Convert.ToString(VAn.ChartPhase, IC)),
+                "self_id=" + Safe(() => getId().ToString(IC)),
                 "params=start:" + IndicatorIdStart + "/n:" + MaxIndicators + "/series:" + MaxSeries });
-            Log("HEAD", new[] { "CAT;indicator;series;value_now;value_minus_10;value_minus_60;value_minus_390;error" });
+            Log("HEAD", new[] { "IND;indicator;name;hidden;series_count;series_names" });
+            Log("HEAD", new[] { "CAT;indicator;series;value_now;value_minus_10;value_minus_60;value_minus_390;points;error" });
             Log("HEAD", new[] { "HSER;indicator;series;bars_with_value;bars_scanned;distinct;min;max;first;last" });
             Log("HEAD", new[] { "SER;mode;bar_index;bar_exch_time;indicator;series;value" });
-            Log("HEAD", new[] { "BOOKMIN;exch_time;updates;resets;bid_levels;ask_levels;best_bid;best_ask;bid_depth_ticks;ask_depth_ticks;bid_qty_10;ask_qty_10" });
-            Log("HEAD", new[] { "TICKMIN;exch_time;trades;volume;ask_volume;bid_volume" });
+            Log("HEAD", new[] { "BOOKMIN;exch_time;updates;resets;bid_levels;ask_levels;best_bid;best_ask;bid_depth_ticks;ask_depth_ticks;bid_qty_10;ask_qty_10;mbo_updates" });
+            Log("HEAD", new[] { "TICKMIN;exch_time;trades;volume;ask_volume;bid_volume;trades_with_order_ids" });
         }
 
         public override void OnOpen(bool isRt)
@@ -175,6 +186,9 @@ namespace DeepSpx.Probe
                     _mVol += tick.Vol;
                     if (tick.AggrSide == Feed.AggressorSideEnum.Ask) _mAskVol += tick.Vol;
                     else if (tick.AggrSide == Feed.AggressorSideEnum.Bid) _mBidVol += tick.Vol;
+                    if (tick.AggrID != 0 || tick.RestID != 0) { _nTicksWithIds++; _mTicksWithIds++; }
+                    if ((tick.TradeType & Feed.TradeTypeEnum.Iceberg) != 0) _nIcebergTicks++;
+                    if ((tick.TradeType & Feed.TradeTypeEnum.SweepOrder) != 0) _nSweepTicks++;
                     if (!_firstRtTickLogged) { _firstRtTickLogged = true; LogTick("TICK1RT", tick, aggrInfo); }
                 }
                 else
@@ -250,22 +264,27 @@ namespace DeepSpx.Probe
             int[] offsets = { 0, 10, 60, 390 };
             Log("DISCOVER", new[] { "when=" + when, "bar=" + last });
             for (int ind = IndicatorIdStart; ind < IndicatorIdStart + MaxIndicators; ind++)
+                LogIndicator(ind);
+            for (int ind = IndicatorIdStart; ind < IndicatorIdStart + MaxIndicators; ind++)
             {
                 for (int ser = 0; ser < MaxSeries; ser++)
                 {
                     var cells = new string[offsets.Length];
                     string firstError = "";
                     bool hasValue = false;
+                    int points = 0;
                     for (int k = 0; k < offsets.Length; k++)
                     {
                         int b = last - offsets[k];
                         if (b < 0) { cells[k] = ""; continue; }
                         double v;
+                        int n;
                         string error;
-                        if (TryRead(ind, ser, b, out v, out error))
+                        if (TryRead(ind, ser, b, out v, out n, out error))
                         {
                             cells[k] = Fmt(v);
                             if (IsValue(v)) hasValue = true;
+                            if (n > points) points = n;
                         }
                         else
                         {
@@ -273,26 +292,47 @@ namespace DeepSpx.Probe
                             if (firstError.Length == 0) firstError = error;
                         }
                     }
-                    if (hasValue) _readable.Add(new SeriesStat { Ind = ind, Ser = ser });
+                    if (hasValue) _readable.Add(new SeriesStat { Ind = ind, Ser = ser, Points = points });
                     // Lignes utiles seulement : une valeur trouvee, ou la serie 0 de chaque indicateur
                     if (hasValue || ser == 0)
-                        Log("CAT", new[] { ind.ToString(IC), ser.ToString(IC), cells[0], cells[1], cells[2], cells[3], firstError });
+                        Log("CAT", new[] { ind.ToString(IC), ser.ToString(IC), cells[0], cells[1], cells[2], cells[3], points.ToString(IC), firstError });
                 }
             }
             Log("DISCOVERED", new[] { "readable=" + _readable.Count, "when=" + when });
         }
 
-        /// GetSeriesValueById(indicateur, serie, barre) : trois entiers, comme dans l'issue #4 du depot officiel.
-        /// Le type de retour n'est pas documente : il est converti en double, quel qu'il soit.
-        private bool TryRead(int ind, int ser, int bar, out double value, out string error)
+        /// Nom de l'indicateur et de ses series : GetParamsById(int) -> BaseIndicatorPrms
+        private void LogIndicator(int ind)
+        {
+            try
+            {
+                var p = VAn.GetParamsById(ind);
+                if (p == null) return;
+                var names = new List<string>();
+                if (p.v_series != null)
+                    foreach (var sp in p.v_series) names.Add(sp == null ? "" : sp.Name ?? "");
+                Log("IND", new[] { ind.ToString(IC), p.name ?? "", p.Hidden.ToString(), names.Count.ToString(IC), string.Join("|", names) });
+            }
+            catch (Exception ex)
+            {
+                if (ind == IndicatorIdStart) Log("IND", new[] { ind.ToString(IC), "ERR " + (ex.Message ?? "") });
+            }
+        }
+
+        /// double[] GetSeriesValueById(int IndicatorIndex, int SubgraphIndex, int Index) (deepchart-api.txt).
+        /// Un point peut porter plusieurs valeurs : on garde la premiere et on note leur nombre.
+        private bool TryRead(int ind, int ser, int bar, out double value, out int points, out string error)
         {
             value = double.NaN;
+            points = 0;
             error = "";
             try
             {
-                object raw = VAn.GetSeriesValueById(ind, ser, bar);
+                double[] raw = VAn.GetSeriesValueById(ind, ser, bar);
                 if (raw == null) { error = "null"; return false; }
-                value = Convert.ToDouble(raw, IC);
+                points = raw.Length;
+                if (raw.Length == 0) { error = "vide"; return false; }
+                value = raw[0];
                 return true;
             }
             catch (Exception ex)
@@ -314,8 +354,8 @@ namespace DeepSpx.Probe
             {
                 for (int b = from; b <= last; b++)
                 {
-                    double v; string error;
-                    if (!TryRead(s.Ind, s.Ser, b, out v, out error) || !IsValue(v)) continue;
+                    double v; int n; string error;
+                    if (!TryRead(s.Ind, s.Ser, b, out v, out n, out error) || !IsValue(v)) continue;
                     s.Coverage++;
                     string text = Fmt(v);
                     if (s.Distinct.Count < 500) s.Distinct.Add(text);
@@ -334,8 +374,8 @@ namespace DeepSpx.Probe
             string bt = BarTime(b);
             foreach (var s in _readable)
             {
-                double v; string error;
-                bool ok = TryRead(s.Ind, s.Ser, b, out v, out error);
+                double v; int n; string error;
+                bool ok = TryRead(s.Ind, s.Ser, b, out v, out n, out error);
                 if (mode == "rt" && ok) { s.RtReads++; if (v == 0.0) s.RtZeros++; }
                 Log("SER", new[] { mode, b.ToString(IC), bt, s.Ind.ToString(IC), s.Ser.ToString(IC), ok ? Fmt(v) : "ERR " + error });
             }
@@ -344,7 +384,10 @@ namespace DeepSpx.Probe
         // ------------------------------------------------------------ Q3 : carnet
         private void ApplyBook(Feed.BookUpdate updates, bool snapshot)
         {
-            if (updates == null || updates.MbpUpdates == null) return;
+            if (updates == null) return;
+            if (updates.NeedResetMbo) _nMboResets++;
+            if (updates.MboUpdates != null) { _nMbo += updates.MboUpdates.Count; _mMbo += updates.MboUpdates.Count; }
+            if (updates.MbpUpdates == null) return;
             if (snapshot || updates.NeedResetMbp)
             {
                 _bids.Clear();
@@ -356,6 +399,7 @@ namespace DeepSpx.Probe
                 var side = level.isAsk ? _asks : _bids;
                 if (level.Qty > 0) side[level.PinT] = level.Qty;
                 else side.Remove(level.PinT);
+                if (level.NumOffers > 0) _nLevelsWithOffers++;
             }
             if (_bids.Count > _maxBidLevels) _maxBidLevels = _bids.Count;
             if (_asks.Count > _maxAskLevels) _maxAskLevels = _asks.Count;
@@ -369,11 +413,23 @@ namespace DeepSpx.Probe
         private static string Describe(Feed.BookUpdate u)
         {
             if (u == null) return "null";
-            if (u.MbpUpdates == null) return "reset=" + u.NeedResetMbp + ",levels=null";
             var sb = new StringBuilder();
-            sb.Append("reset=").Append(u.NeedResetMbp).Append(",levels=").Append(u.MbpUpdates.Count).Append(",first=");
-            foreach (var l in u.MbpUpdates.Take(8))
-                sb.Append(l.isAsk ? "A" : "B").Append(l.PinT.ToString(IC)).Append('x').Append(l.Qty.ToString(IC)).Append(' ');
+            sb.Append("reset=").Append(u.NeedResetMbp).Append(",reset_mbo=").Append(u.NeedResetMbo)
+              .Append(",best=").Append(Fmt(u.BestBidPrice)).Append('/').Append(Fmt(u.BestAskPrice))
+              .Append(",exDt=").Append(Fmt(u.exDt))
+              .Append(",levels=").Append(u.MbpUpdates == null ? "null" : u.MbpUpdates.Count.ToString(IC))
+              .Append(",mbo=").Append(u.MboUpdates == null ? "null" : u.MboUpdates.Count.ToString(IC)).Append(",first=");
+            if (u.MbpUpdates != null)
+                foreach (var l in u.MbpUpdates.Take(6))
+                    sb.Append(l.isAsk ? "A" : "B").Append(l.PinT.ToString(IC)).Append('x').Append(l.Qty.ToString(IC))
+                      .Append('/').Append(l.NumOffers.ToString(IC)).Append("o ");
+            if (u.MboUpdates != null)
+            {
+                sb.Append(",first_mbo=");
+                foreach (var o in u.MboUpdates.Take(4))
+                    sb.Append(o.IsAsk ? "A" : "B").Append(o.OrderId.ToString(IC)).Append('@').Append(Fmt(o.Price))
+                      .Append('x').Append(o.Qty.ToString(IC)).Append('/').Append(o.Flags.ToString()).Append(' ');
+            }
             return sb.ToString();
         }
 
@@ -386,13 +442,13 @@ namespace DeepSpx.Probe
             long askQty10 = _asks.Take(10).Sum(x => (long)x.Value);
             Log("BOOKMIN", new[] { t, _mBookUpdates.ToString(IC), _mBookResets.ToString(IC), _bids.Count.ToString(IC), _asks.Count.ToString(IC),
                 PriceOf(bestBid), PriceOf(bestAsk), DepthTicks(_bids).ToString(IC), DepthTicks(_asks).ToString(IC),
-                bidQty10.ToString(IC), askQty10.ToString(IC) });
-            Log("TICKMIN", new[] { t, _mTicks.ToString(IC), _mVol.ToString(IC), _mAskVol.ToString(IC), _mBidVol.ToString(IC) });
+                bidQty10.ToString(IC), askQty10.ToString(IC), _mMbo.ToString(IC) });
+            Log("TICKMIN", new[] { t, _mTicks.ToString(IC), _mVol.ToString(IC), _mAskVol.ToString(IC), _mBidVol.ToString(IC), _mTicksWithIds.ToString(IC) });
         }
 
         private void ResetMinute()
         {
-            _mBookUpdates = _mBookResets = _mTicks = _mVol = _mAskVol = _mBidVol = 0;
+            _mBookUpdates = _mBookResets = _mTicks = _mVol = _mAskVol = _mBidVol = _mMbo = _mTicksWithIds = 0;
         }
 
         private string PriceOf(int pinT)
@@ -419,6 +475,11 @@ namespace DeepSpx.Probe
             Log("VERDICT", new[] { "Q5", "OUI (cette ligne est dans le log)" });
             Log("VERDICT", new[] { "Q6", "replay=" + replay });
             Log("VERDICT", new[] { "Q7", rtReads == 0 ? "pas encore de lecture temps reel" : rtZeros + " valeurs nulles sur " + rtReads + " lectures temps reel" });
+            Log("VERDICT", new[] { "Q8", _nBook == 0 ? "en attente du carnet" :
+                (_nMbo > 0 ? "OUI " + _nMbo + " mises a jour MBO" : "NON pas de MBO") +
+                ", niveaux avec nombre d'ordres : " + _nLevelsWithOffers +
+                ", trades avec identifiants d'ordre : " + _nTicksWithIds + "/" + _nTickRt +
+                ", icebergs : " + _nIcebergTicks + ", sweeps : " + _nSweepTicks });
             foreach (var key in _errorCount.Keys.Take(20))
                 Log("ERR", new[] { key, "x" + _errorCount[key], _errorFirst[key] });
         }
@@ -427,8 +488,12 @@ namespace DeepSpx.Probe
         private void LogTick(string kind, Feed.TickByTick t, AggrInfo aggrInfo)
         {
             Log(kind, new[] { "price=" + Fmt(t.price), "pinT=" + t.PinT.ToString(IC), "vol=" + t.Vol.ToString(IC),
-                "side=" + t.AggrSide, "bid=" + Fmt(t.bid), "ask=" + Fmt(t.ask), "exDt=" + Fmt(t.exDt),
-                "aggr=" + (aggrInfo == null ? "null" : Clean(aggrInfo.ToString())) });
+                "qtyOrd=" + t.QtyOrd.ToString(IC), "side=" + t.AggrSide, "bid=" + Fmt(t.bid), "ask=" + Fmt(t.ask),
+                "exDt=" + Fmt(t.exDt), "locDt=" + Fmt(t.locDt), "type=" + t.TradeType,
+                "aggrId=" + t.AggrID.ToString(IC), "restId=" + t.RestID.ToString(IC), "counter=" + t.CounterSize.ToString(IC),
+                "aggr=" + (aggrInfo == null ? "null" : "pinT:" + aggrInfo.PinT.ToString(IC) + "/vol:" + aggrInfo.Vol.ToString(IC) +
+                    "/trades:" + aggrInfo.NumberOfTrades.ToString(IC) + "/maxQtyOrd:" + aggrInfo.MaxQtyOrd.ToString(IC) +
+                    "/dir:" + aggrInfo.TradeDir) });
         }
 
         private string BarTime(int b)

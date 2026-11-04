@@ -1,9 +1,10 @@
 # Ce qu'on sait du SDK DeepCharts
 
 Sources : la documentation officielle (lue en entier dans le [dépôt d'exemples](https://github.com/VolumetricaTrading/deepchart-indicators-api),
-dossier `docs/`), les issues de ce dépôt, et `tomcollet/deep` (OF Scalper, qui tourne dans Deepchart). **Confirmé** veut
-dire vu dans du code qui compile contre les vraies DLL ; **documenté**, écrit dans la doc mais pas encore vu ;
-**hypothèse**, à lever par la sonde ou par `tools/ApiDump`.
+dossier `docs/`), les issues de ce dépôt, `tomcollet/deep` (OF Scalper, qui tourne dans Deepchart) et
+**`deepchart-api.txt`**, l'inventaire produit par `tools/ApiDump` sur le poste de Tom le 04/11/2026 (VolSysAPI 1.4.6.0,
+VolumetricaCore 1.0.0.0 ; non committé). **Confirmé** veut dire vu dans du code qui compile contre les vraies DLL ou dans
+cet inventaire ; **documenté**, écrit dans la doc mais pas encore vu ; **hypothèse**, à lever par la sonde.
 
 ## 1. Le bac à sable : ce qu'une DLL a le droit de faire
 
@@ -48,8 +49,9 @@ utiliser (doc `troubleshooting`). **Documenté, et confirmé par `tools/DllCheck
   barre de l'historique `OnOpen` et `OnClose`, puis **un seul `OnEnd(false)`** à la fin de l'historique. En temps réel :
   `OnTick` à chaque trade, `OnClose` + `OnOpen` à chaque nouvelle barre, `OnEnd(true)` après chaque lot de mises à jour.
   `OnDispose` n'est jamais appelé sur desktop.
-- Abonnements dans `OnSet` : `OnOpenCall`, `OnCloseCall`, `OnTickCall`, `OnEndCall` (`Off` par défaut, `RT`,
-  `HistRT`) ; `OnBookCall = CallHandler.RT` pour le carnet (desktop).
+- Abonnements dans `OnSet` : `OnOpenCall`, `OnCloseCall`, `OnTickCall`, `OnEndCall` (`Off` = 0 par défaut,
+  `HistRT` = 1, `RT` = 2) ; `OnBookCall = CallHandler.RT` pour le carnet (desktop).
+- `getId()` : identifiant de l'indicateur sur le graphique.
 - `StatusMessage` (message affiché au chargement), `NeedRecalculate`, `IsValid` (faux après une erreur).
 
 ## 3. Données de marché
@@ -60,8 +62,15 @@ utiliser (doc `troubleshooting`). **Documenté, et confirmé par `tools/DllCheck
   `BidVol`, nombres de trades `TotNTVol`/`AskNTVol`/`BidNTVol`, `MaxDeltaVol`, `MinDeltaVol`, `VwapPrice`. Ne jamais
   lire après `VAn.BarIndex` pendant l'historique.
 - Volume par prix : `NeedVbp = true`, puis `bar.PriceList` et `bar.VbpListAll[pinT][0]` (peut être `null`).
-- Trade (`Feed.TickByTick`) : `price`, `PinT`, `Vol`, `AggrSide` (`Ask`, `Bid`, `Between`), `bid`, `ask` au moment du
-  trade, `exDt` heure de bourse.
+- Trade (`Feed.TickByTick`) : `price`, `PinT`, `Vol`, `QtyOrd`, `CumVol`, `AggrSide` (`Ask` = 1, `Bid` = -1,
+  `Between` = 0), `bid`, `ask` au moment du trade, `exDt` heure de bourse, `locDt` heure locale, **`AggrID` et `RestID`
+  (identifiants de l'ordre agresseur et de l'ordre passif)**, `TradeType` (drapeaux `Iceberg`, `SweepOrder`, `Auction`,
+  `Extended`...), `CounterSize`, `IsNewDay`.
+- Barre : `VolTotList` est un tableau `InfoVolClass[]` (volumes en `long`, plus `CumDeltaVol`) ; la barre a aussi `Ask`,
+  `Bid`, `LastAsk`, `LastBid`, `lastDtInBar` et **`OptionOffsetPrice`** (écart indice / future sur un graphique options).
+- `ChartPhase` : `HistoricalFull`, `Backtesting`, `HistoricalPartial`, `Realtime`, `RealtimeFlushing`.
+- `AggrInfo` (trade agrégé, avec `SetCalculateAggrTrades()`) : `PinT`, `TradeDir`, `Vol`, `MaxQtyOrd`,
+  `NumberOfTrades`, `StartPrice`, `EndPrice`, `AvgPrice`.
 - Prix en ticks entiers : `FromPinT(pinT).Price`, `FromPrice`, `GetDoubleTicksDiff`, `GetIntTicksDiff`,
   `DoubleAddSubTicks`, `IntAddSubTicks`.
 
@@ -85,12 +94,18 @@ utiliser (doc `troubleshooting`). **Documenté, et confirmé par `tools/DllCheck
 
 ## 4. Carnet d'ordres (le flux L2)
 
-**Confirmé**
-- `OnBook(Feed.BookUpdate)` et `VAn.RebuildDom()`, desktop uniquement. `BookUpdate { NeedResetMbp, MbpUpdates }`, chaque
-  `MbpUpdate { PinT, isAsk, Qty }` ; `Qty = 0` retire le niveau ; `NeedResetMbp` oblige à vider le carnet tenu à jour.
-- **Carnet par prix (MBP), pas les ordres individuels.** Même avec un flux MBO, Deepchart agrège par prix avant de
-  transmettre (`deep`, « À propos du MBO »). Icebergs, recharges et retraits se **déduisent** en croisant les variations
-  par niveau avec les trades exécutés à ce prix : `deep/src/OrderFlowScalper/Engine/BookAnalyzer.cs` le fait déjà.
+**Confirmé (inventaire)**
+- `OnBook(Feed.BookUpdate)` et `VAn.RebuildDom()`, desktop uniquement.
+- `BookUpdate` : `NeedResetMbp`, **`NeedResetMbo`**, `BestBidPrice`, `BestAskPrice`, `BestBidInT`, `BestAskInT`, `exDt`,
+  `appDt`, `MbpUpdates` (`List<BookInfo>`) et **`MboUpdates` (`List<MboInfo>`)**.
+- `BookInfo` (un niveau de prix) : `Price`, `PinT`, `Qty`, `DiffQty`, **`NumOffers`** (nombre d'ordres au niveau),
+  `isAsk`, `IsShiftOutside`, `MboMaxQty`. `Qty = 0` retire le niveau.
+- **`MboInfo` (un ordre)** : `OrderId`, `IsAsk`, `Qty`, `Price`, `PinT`, `MaxQty`, `CumFillQty`, `Flags` (`Iceberg`).
+
+**Ce que ça change** : `deep` notait que l'API ne transmettait que le carnet par prix. L'API actuelle prévoit le carnet
+**ordre par ordre** (MBO) et l'identifiant des ordres dans chaque trade. Reste à savoir si ton flux les remplit : c'est
+la question Q8 de la sonde. Sinon, icebergs et retraits se déduisent du carnet par prix et des trades, comme le fait
+`deep/src/OrderFlowScalper/Engine/BookAnalyzer.cs`.
 
 **Ce que ça veut dire pour ton flux L2**
 - Le L2 acheté sur le site de DeepCharts alimente le DOM de Deepchart, et c'est **ce même carnet que la DLL reçoit**
@@ -106,14 +121,18 @@ utiliser (doc `troubleshooting`). **Documenté, et confirmé par `tools/DllCheck
 
 ## 5. Lecture des autres indicateurs (DeepGamma)
 
-- `GetSeriesValueById(indicator, series, index)` et `GetParamsById(index)`, desktop uniquement.
+- **Signatures (inventaire)** : `double[] GetSeriesValueById(int IndicatorIndex, int SubgraphIndex, int Index)` (un
+  point peut porter plusieurs valeurs) et `BaseIndicatorPrms GetParamsById(int IndicatorIndex)`, qui donne le **nom**
+  de l'indicateur (`name`), `Hidden` et la liste de ses séries (`v_series[].Name`). Desktop uniquement.
+- `IndicatorCategoryEnum` contient `DeepGamma` et `DeepGammaCboe` : les indicateurs DeepGamma sont des indicateurs comme
+  les autres, lisibles par ces deux méthodes.
 - **Issue #4 (ouverte, 21/10/2026, Deepchart 16.5.4)** : un développeur lit **Option Market Maker Pressure**, un
   indicateur DeepGamma, avec `VAn.GetSeriesValueById(3, 0, barIndex)` sur un graphique ES 1 min.
   - **En replay**, les valeurs sont justes et varient (de l'ordre de 4,79E+09).
   - **En live**, l'appel renvoie 0, pour la barre en cours comme pour les barres fermées, alors que l'indicateur
     affiche des valeurs non nulles. Testé dans `OnEnd`, `OnClose` et `OnOpen`. Aucune réponse de Volumetrica à ce jour.
-- Ce que l'issue établit : **trois `int`** en argument, **un indicateur DeepGamma est lisible**, et le numéro
-  d'indicateur est sans doute sa position sur le graphique. Type de retour : à lire dans `deepchart-api.txt`.
+- Ce que l'issue établit : **un indicateur DeepGamma est lisible**, et le numéro d'indicateur est sans doute sa position
+  sur le graphique (la sonde v3 l'écrit avec son nom).
 - D'après `deep` : Deep Stats expose 21 séries ; Deep Trades et Deep Profile n'en exposent aucune.
 - **Conséquence** : pour la recherche (replay), la voie DeepGamma est ouverte. Pour le live, elle dépend du correctif
   de l'issue #4 (question Q7 de la sonde).
@@ -132,14 +151,21 @@ utiliser (doc `troubleshooting`). **Documenté, et confirmé par `tools/DllCheck
 ## 7. Messages, ordres
 
 - `ShowMessage` et `PlayAlert` : temps réel seulement. `AddToLog(message, level, source, showToast)` : le log de l'app.
-- `TradingApi` (`ITradingAPI`, desktop) : ordres et positions de l'utilisateur. Non utilisé ; membres dans
-  `deepchart-api.txt`.
+- `TradingApi` (`ITradingAPI`, desktop, membre protégé de l'indicateur) : **API d'ordres complète** (inventaire).
+  - Position : `PositionNetQuantity`, `PositionBuyQuantity`, `PositionSellQuantity`.
+  - Ordres : `InsertOrder(OrderInsertRequest, ref reason)` → identifiant ; `OrderInsertRequest` = `OrderType` (`Market`,
+    `Limit`, `Stop`, `StopLimit`), `Quantity`, `Price`, `Brackets`, `RefPositionId`, `BarsExpiration`.
+  - Brackets : `BracketParam` (quantité, ticks ou prix, objectif ou stop, OCO, passage au point mort, stop suiveur) ;
+    `InsertBracket`, `ModifyBracket`.
+  - Gestion : `ModifyOrderPrice`, `ModifyOrderQuantity`, `RemoveOrder`, `FlatPosition`, **`FlatAllPositions()`**,
+    **`CancelAllOrders()`**, `GetAllOrdersStatus()`, `GetOrderInfo()`.
+  - Non utilisé pour l'instant (le pupitre reste la voie retenue), mais c'est une voie d'exécution directe depuis la DLL.
 
 ## Ce qui reste à lever
 
-1. Type de retour de `GetSeriesValueById`, champs MBO éventuels de `BookUpdate`, membres d'`AggrInfo` → `tools/ApiDump`.
-2. Séries DeepGamma lisibles, numéros, profondeur d'historique → sonde, test A.
+1. ~~Signatures de `GetSeriesValueById`, champs de `BookUpdate`, membres d'`AggrInfo`~~ → réglé par `deepchart-api.txt`.
+2. Séries DeepGamma lisibles, numéros et noms, profondeur d'historique → sonde, test A.
 3. Valeurs DeepGamma à 0 en live (issue #4) → sonde, test B.
-4. Carnet en replay, nombre de niveaux → sonde, tests B et C.
+4. Carnet en replay, nombre de niveaux, MBO rempli ou non (Q8) → sonde, tests B et C.
 5. Où Deepchart écrit son log, à quelle vitesse il est vidé sur disque → test A, puis mesure dédiée si on s'en sert en
    live.

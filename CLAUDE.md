@@ -34,8 +34,10 @@ travail : **français** (docs, commentaires, messages de commit).
 - **Developer id DeepCharts** : jamais committé. Toujours `-p:DeepchartDevId=...` en ligne de commande.
 - **Rien de propriétaire dans le dépôt** : ni données de marché, ni sorties de la sonde, ni `deepchart-api.txt`
   (`.gitignore`).
-- **Stubs** (`tests/DeepchartApiStubs`) : imitation de l'API pour compiler sans Deepchart. Ne les modifier que pour
-  refléter l'API réelle (vue dans `deepchart-api.txt` ou `api_dump.txt`), jamais pour faire passer du code.
+- **Stubs** (`tests/DeepchartApiStubs`) : imitation de l'API pour compiler sans Deepchart, alignée sur
+  `deepchart-api.txt` du 04/11/2026 (VolSysAPI 1.4.6.0). Ne les modifier que pour refléter l'API réelle, jamais pour faire
+  passer du code. Points piégeux : `GetSeriesValueById` renvoie `double[]`, `VolTotList` est un tableau,
+  `CallHandler` vaut Off = 0, HistRT = 1, RT = 2.
 - **Avant chaque commit touchant la DLL** : `dotnet build tests/ProbeCompileCheck`, puis
   `dotnet run --project tools/DllCheck -- tests/ProbeCompileCheck/bin/Debug/net10.0/ProbeCompileCheck.dll` (aucune
   référence interdite), puis `dotnet run --project tests/ProbeHarness` (tout doit finir en OK).

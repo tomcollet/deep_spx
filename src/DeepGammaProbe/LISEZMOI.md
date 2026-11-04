@@ -1,4 +1,4 @@
-# Sonde DeepGamma : protocole de test (version 2)
+# Sonde DeepGamma : protocole de test (version 3)
 
 La sonde est un indicateur DeepCharts **en lecture seule** : aucun ordre, rien de dessiné, le graphique n'est pas
 modifié.
@@ -8,7 +8,7 @@ modifié.
 Deepchart**, une ligne par enregistrement, préfixe `DSPX;`. `tools/extract_dspx.py` range ensuite ces lignes en fichiers
 CSV.
 
-Elle répond à sept questions :
+Elle répond à huit questions :
 
 | # | Question | Lignes du log |
 |---|---|---|
@@ -19,6 +19,7 @@ Elle répond à sept questions :
 | Q5 | Le log sert-il de canal de sortie ? | toutes |
 | Q6 | Le graphique est-il un replay (`VAn.IsReplayData`) ? | `META`, `VERDICT` |
 | Q7 | En live, les séries DeepGamma valent-elles 0 ? (issue #4 du dépôt officiel) | `SER`, `VERDICT` |
+| Q8 | Le carnet arrive-t-il ordre par ordre (MBO), avec les identifiants d'ordre dans les trades ? | `BOOKEX`, `BOOKMIN`, `TICK1RT`, `VERDICT` |
 
 Les verdicts sont réécrits à la fin de l'historique, puis toutes les 5 minutes de bourse (lignes `VERDICT`).
 
@@ -28,12 +29,12 @@ Les verdicts sont réécrits à la fin de l'historique, puis toutes les 5 minute
 
 - **Version de DeepCharts : 16.5.4 au minimum.** En 16.5.3, `HistRT` ne livrait aucun trade historique (issue #1,
   corrigée en 16.5.4 d'après Volumetrica).
-- **Inventaire de l'API** :
+- **Inventaire de l'API** (fait le 04/11/2026, VolSysAPI 1.4.6.0) :
   ```
   dotnet run --project tools\ApiDump
   ```
-  Écrit `deepchart-api.txt` : signature exacte de `GetSeriesValueById`, champs de `BookUpdate` (y a-t-il du MBO ?),
-  membres d'`AggrInfo`. Envoie-le-moi. Il n'est pas committé, car il décrit des DLL propriétaires.
+  À refaire après chaque mise à jour de DeepCharts : si une signature change, la sonde et les stubs doivent suivre.
+  `deepchart-api.txt` n'est pas committé, car il décrit des DLL propriétaires.
 
 ## 1. Compilation et contrôle
 
@@ -102,14 +103,15 @@ Un fichier CSV par type de ligne, et les derniers verdicts à l'écran. **Envoie
 | `META` | Version, symbole, graphique, replay, phase du graphique, paramètres |
 | `HEAD` | En-tête des lignes suivantes |
 | `HIST` | Fin de l'historique : nombre de barres et de trades historiques, première et dernière barre |
-| `CAT` | Catalogue : valeur de chaque série testée maintenant et 10, 60 et 390 barres avant, ou l'erreur |
+| `IND` | Numéro, nom, état masqué et noms des séries de chaque indicateur du graphique (`GetParamsById`) |
+| `CAT` | Catalogue : valeur de chaque série testée maintenant et 10, 60 et 390 barres avant, nombre de valeurs par point, ou l'erreur |
 | `HSER` | Par série lisible : barres renseignées sur l'historique relu, valeurs distinctes, min, max, première et dernière |
 | `SER` | Par série lisible et par minute de temps réel : la valeur |
 | `BOOKEX`, `BOOKSNAP` | Premières mises à jour du carnet et état complet (`RebuildDom`) |
-| `BOOKMIN` | Par minute : mises à jour, resets, niveaux bid/ask, meilleurs prix, profondeur en ticks, quantités sur 10 niveaux |
-| `TICKMIN` | Par minute : trades, volume, volume à l'ask et au bid |
+| `BOOKMIN` | Par minute : mises à jour, resets, niveaux bid/ask, meilleurs prix, profondeur en ticks, quantités sur 10 niveaux, mises à jour MBO |
+| `TICKMIN` | Par minute : trades, volume, volume à l'ask et au bid, trades portant les identifiants d'ordre |
 | `TICK1HIST`, `TICK1RT` | Premier trade historique et premier trade temps réel, tous champs |
-| `SUM`, `VERDICT`, `ERR` | Compteurs, verdicts Q1 à Q7, erreurs |
+| `SUM`, `VERDICT`, `ERR` | Compteurs, verdicts Q1 à Q8, erreurs |
 
 ## Paramètres de la sonde
 
@@ -130,5 +132,5 @@ dotnet run --project tools\DllCheck -- tests\ProbeCompileCheck\bin\Debug\net10.0
 dotnet run --project tests\ProbeHarness
 ```
 
-Le banc simule un graphique (historique, replay, trois faux indicateurs dont un à 0 en temps réel, un carnet) et lit
-les lignes `DSPX;` écrites dans le faux log. Il doit finir sur dix lignes `OK`.
+Le banc simule un graphique (historique, replay, trois faux indicateurs dont un à 0 en temps réel, un carnet par prix et par ordre) et lit
+les lignes `DSPX;` écrites dans le faux log. Il doit finir sur douze lignes `OK`.
