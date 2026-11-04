@@ -21,6 +21,8 @@ var probe = new DeepGammaProbe();
 // VAn est en lecture seule dans l'API : le banc le renseigne par son champ (la reflexion est ici, pas dans la sonde)
 typeof(VolSysAPI.Indicators.Indicator).GetField("<VAn>k__BackingField", BindingFlags.NonPublic | BindingFlags.Instance)!
     .SetValue(probe, van);
+typeof(VolSysAPI.Indicators.Indicator).GetField("<IndVars>k__BackingField", BindingFlags.NonPublic | BindingFlags.Instance)!
+    .SetValue(probe, new VolSysAPI.Indicators.IndVarsClass());
 
 probe.OnSet(true, false);
 probe.OnLoad();
@@ -69,7 +71,10 @@ foreach (var g in lines.GroupBy(l => l.Split(';')[1]).OrderBy(g => g.Key))
 string Last(string q) => lines.Last(l => l.StartsWith(DeepGammaProbe.Prefix + "VERDICT;" + q + ";"));
 Console.WriteLine();
 foreach (var q in new[] { "Q1", "Q2", "Q3", "Q4", "Q5", "Q6", "Q7", "Q8" }) Console.WriteLine(Last(q));
+Console.WriteLine("\nPanneau sur le graphique :");
+foreach (var a in van.Annotations.Where(a => !string.IsNullOrEmpty(a.Text))) Console.WriteLine("  | " + a.Text);
 Console.WriteLine();
+var panel = van.Annotations.Select(a => a.Text ?? "").ToList();
 
 var checks = new (string label, bool ok)[]
 {
@@ -85,6 +90,9 @@ var checks = new (string label, bool ok)[]
     ("Catalogue : indicateur 1 serie 0, 2 valeurs par point", lines.Any(l => l.StartsWith("DSPX;CAT;1;0;") && l.EndsWith(";2;"))),
     ("Instantane du carnet", lines.Any(l => l.StartsWith("DSPX;BOOKSNAP;try=1;reset=True,"))),
     ("Statistiques par minute", lines.Count(l => l.StartsWith("DSPX;BOOKMIN;")) == 5),
+    ("Panneau : verdict Q1", panel.Contains("Q1 OUI 9 series lisibles")),
+    ("Panneau : nom de l'indicateur et de la serie", panel.Any(t => t.StartsWith("  1 Option Summary / 0 GEX : 0 (rt)"))),
+    ("Panneau : relatif, au premier plan", van.Annotations.Count > 10 && van.Annotations.All(a => a.CoordinateXType == CoordinateTypeEnum.Relative)),
     ("Aucune erreur", !lines.Any(l => l.StartsWith("DSPX;ERR;"))),
 };
 foreach (var c in checks) Console.WriteLine((c.ok ? "OK    " : "ECHEC ") + c.label);
@@ -107,7 +115,8 @@ public class FakeVAn : IMethodCloudAPI
     public List<string> Log = new();
 
     public IChartPoint AddPointToSeries(IChartSeries Series, int IndexBar, double YValue = 0, bool IsHidden = false, bool IsBreak = false) => null;
-    public IAnnotation CreateAnnotation(AnnotationType annType) => null;
+    public List<FakeAnn> Annotations = new();
+    public IAnnotation CreateAnnotation(AnnotationType annType) { var a = new FakeAnn { AnnotationType = annType }; Annotations.Add(a); return a; }
     public IAnnGroup CreateAnnGroup() => null;
     public void AddAnnotation(IAnnGroup AnnGroup, IAnnotation NewAnn) { }
     public void SetCalculateAggrTrades() { }
@@ -143,4 +152,26 @@ public class FakeVAn : IMethodCloudAPI
         if (IndicatorIndex == 2) return new[] { 5812.25 + SubgraphIndex };
         return Index > BarIndex - 5 ? new[] { 30.0 } : null;
     }
+}
+
+public class FakeAnn : IAnnotation
+{
+    public AnnotationType AnnotationType { get; set; }
+    public double X { get; set; }
+    public double Y { get; set; }
+    public double X2 { get; set; }
+    public double Y2 { get; set; }
+    public CoordinateTypeEnum CoordinateXType { get; set; }
+    public CoordinateTypeEnum CoordinateYType { get; set; }
+    public ChartAreaRef Area { get; set; }
+    public bool Visible { get; set; }
+    public bool PlotForeground { get; set; }
+    public VolumetricaCore.ColorRef LineColor { get; set; }
+    public int LineWidth { get; set; }
+    public VolumetricaCore.ColorRef BackColor { get; set; }
+    public string Text { get; set; }
+    public VolumetricaCore.ColorRef ForeColor { get; set; }
+    public int FontSize { get; set; }
+    public bool FontBold { get; set; }
+    public string Tooltip { get; set; }
 }

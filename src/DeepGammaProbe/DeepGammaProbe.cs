@@ -9,7 +9,7 @@
 //    Q3  Le carnet arrive-t-il (OnBook, RebuildDom), et sur combien de
 //        niveaux ?
 //    Q4  Les trades historiques arrivent-ils (OnTickCall = HistRT) ?
-//    Q5  Le log de Deepchart sert-il de canal de sortie ?
+//    Q5  Le log de Deepchart sert-il de canal de sortie ? (non : chiffre sur disque)
 //    Q6  Le graphique est-il un replay (VAn.IsReplayData) ?
 //    Q7  En live, les series DeepGamma valent-elles 0 (issue #4 du depot
 //        officiel) ?
@@ -26,6 +26,10 @@
 //  collections generiques, LINQ, StringBuilder et CultureInfo, et ecrit
 //  tout dans le log de Deepchart, une ligne par enregistrement, prefixe
 //  "DSPX;". Verification : tools/DllCheck.
+//
+//  v4 : le fichier de log de Deepchart est chiffre sur disque. Les verdicts
+//  et les series lisibles s'affichent donc aussi dans un panneau de texte
+//  sur le graphique (annotations), lisible a l'ecran ou en capture.
 //
 //  Compilation : dotnet build src/DeepGammaProbe -p:DeepchartDevId=TON-ID
 //  Protocole    : src/DeepGammaProbe/LISEZMOI.md
@@ -48,7 +52,7 @@ namespace DeepSpx.Probe
     public class DeepGammaProbe : VolSysAPI.Indicators.Indicator
     {
         public const string Prefix = "DSPX;";
-        public const string Version = "3";
+        public const string Version = "4";
 
         public static IndicatorDescriptionBase Register() =>
             new IndicatorDescriptionBase
@@ -70,6 +74,12 @@ namespace DeepSpx.Probe
         public int RtSeriesMinutes { get; set; } = 60;
         /// Minutes de temps reel pendant lesquelles les statistiques du carnet et des trades sont ecrites.
         public int RtStatsMinutes { get; set; } = 60;
+        /// Panneau de texte sur le graphique : position (0 a 1), taille de police, nombre de series affichees.
+        public double PanelX { get; set; } = 0.01;
+        public double PanelY { get; set; } = 0.97;
+        public double PanelLineStep { get; set; } = 0.028;
+        public int PanelFontSize { get; set; } = 11;
+        public int PanelMaxSeries { get; set; } = 14;
 
         // ------------------------------------------------------------ etat
         private static readonly CultureInfo IC = CultureInfo.InvariantCulture;
@@ -83,9 +93,15 @@ namespace DeepSpx.Probe
             public string First = "", Last = "";
             public int RtReads, RtZeros;               // Q7
             public int Points;                         // valeurs par point (longueur du tableau renvoye)
+            public string LastRt = "";
         }
 
         private readonly List<SeriesStat> _readable = new List<SeriesStat>();
+        private readonly Dictionary<int, string> _indNames = new Dictionary<int, string>();
+        private readonly Dictionary<int, List<string>> _seriesNames = new Dictionary<int, List<string>>();
+        private readonly List<IAnnotation> _panel = new List<IAnnotation>();
+        private readonly List<string> _verdicts = new List<string>();
+        private long _panelUpdates;
         private readonly Dictionary<string, int> _errorCount = new Dictionary<string, int>();
         private readonly Dictionary<string, string> _errorFirst = new Dictionary<string, string>();
         private readonly SortedDictionary<int, int> _bids = new SortedDictionary<int, int>();
@@ -116,6 +132,8 @@ namespace DeepSpx.Probe
         public override void OnLoad()
         {
             _readable.Clear(); _errorCount.Clear(); _errorFirst.Clear(); _bids.Clear(); _asks.Clear();
+            _indNames.Clear(); _seriesNames.Clear(); _verdicts.Clear(); _panelUpdates = 0;
+            CreatePanel();
             _historyDone = _bookSnapshotDone = _firstHistTickLogged = _firstRtTickLogged = false;
             _historyLastIndex = -1;
             _histBarsScanned = _bookExamples = _snapshotTries = _rtDiscoveryTries = _rtMinutes = 0;
@@ -243,6 +261,8 @@ namespace DeepSpx.Probe
                     if (_bids.Count + _asks.Count > 0) _bookSnapshotDone = true;
                 }
 
+                if (isRt && _nEndRt % 20 == 1) UpdatePanel();
+
                 if (isRt)
                 {
                     DateTime now = VAn.LastExDt;
@@ -312,6 +332,8 @@ namespace DeepSpx.Probe
                 if (p.v_series != null)
                     foreach (var sp in p.v_series) names.Add(sp == null ? "" : sp.Name ?? "");
                 Log("IND", new[] { ind.ToString(IC), p.name ?? "", p.Hidden.ToString(), names.Count.ToString(IC), string.Join("|", names) });
+                _indNames[ind] = p.name ?? "";
+                _seriesNames[ind] = names;
             }
             catch (Exception ex)
             {
@@ -376,7 +398,7 @@ namespace DeepSpx.Probe
             {
                 double v; int n; string error;
                 bool ok = TryRead(s.Ind, s.Ser, b, out v, out n, out error);
-                if (mode == "rt" && ok) { s.RtReads++; if (v == 0.0) s.RtZeros++; }
+                if (mode == "rt" && ok) { s.RtReads++; if (v == 0.0) s.RtZeros++; s.LastRt = Fmt(v); }
                 Log("SER", new[] { mode, b.ToString(IC), bt, s.Ind.ToString(IC), s.Ser.ToString(IC), ok ? Fmt(v) : "ERR " + error });
             }
         }
@@ -468,20 +490,87 @@ namespace DeepSpx.Probe
             Log("SUM", new[] { "when=" + when,
                 "open=" + _nOpenHist + "/" + _nOpenRt, "close=" + _nCloseHist + "/" + _nCloseRt, "end=" + _nEndHist + "/" + _nEndRt,
                 "trades=" + _nTickHist + "/" + _nTickRt, "book_updates=" + _nBook, "book_resets=" + _nBookResets });
-            Log("VERDICT", new[] { "Q1", _readable.Count > 0 ? "OUI " + _readable.Count + " series lisibles" : _historyDone ? "NON pour l'instant (lignes CAT)" : "en attente" });
-            Log("VERDICT", new[] { "Q2", !_historyDone ? "en attente" : withHistory > 0 ? "OUI " + withHistory + " series renseignees sur au moins la moitie des barres relues et variables" : "NON ou constant (lignes HSER)" });
-            Log("VERDICT", new[] { "Q3", _nBook > 0 ? "OUI " + _nBook + " mises a jour, jusqu'a " + _maxBidLevels + " niveaux bid / " + _maxAskLevels + " ask, " + _maxDepthTicks + " ticks de profondeur" : "aucune mise a jour recue" });
-            Log("VERDICT", new[] { "Q4", _nTickHist > 0 ? "OUI " + _nTickHist + " trades historiques" : "aucun trade historique (Deepchart 16.5.4 ou plus requis, issue #1)" });
-            Log("VERDICT", new[] { "Q5", "OUI (cette ligne est dans le log)" });
-            Log("VERDICT", new[] { "Q6", "replay=" + replay });
-            Log("VERDICT", new[] { "Q7", rtReads == 0 ? "pas encore de lecture temps reel" : rtZeros + " valeurs nulles sur " + rtReads + " lectures temps reel" });
-            Log("VERDICT", new[] { "Q8", _nBook == 0 ? "en attente du carnet" :
+            _verdicts.Clear();
+            _verdicts.Add("Q1 " + (_readable.Count > 0 ? "OUI " + _readable.Count + " series lisibles" : _historyDone ? "NON pour l'instant (lignes CAT)" : "en attente"));
+            _verdicts.Add("Q2 " + (!_historyDone ? "en attente" : withHistory > 0 ? "OUI " + withHistory + " series renseignees sur au moins la moitie des barres relues et variables" : "NON ou constant (lignes HSER)"));
+            _verdicts.Add("Q3 " + (_nBook > 0 ? "OUI " + _nBook + " mises a jour, jusqu'a " + _maxBidLevels + " niveaux bid / " + _maxAskLevels + " ask, " + _maxDepthTicks + " ticks de profondeur" : "aucune mise a jour recue"));
+            _verdicts.Add("Q4 " + (_nTickHist > 0 ? "OUI " + _nTickHist + " trades historiques" : "aucun trade historique (Deepchart 16.5.4 ou plus requis, issue #1)"));
+            _verdicts.Add("Q5 lignes envoyees au log (fichier chiffre sur disque : resultats lus sur ce panneau)");
+            _verdicts.Add("Q6 replay=" + replay);
+            _verdicts.Add("Q7 " + (rtReads == 0 ? "pas encore de lecture temps reel" : rtZeros + " valeurs nulles sur " + rtReads + " lectures temps reel"));
+            _verdicts.Add("Q8 " + (_nBook == 0 ? "en attente du carnet" :
                 (_nMbo > 0 ? "OUI " + _nMbo + " mises a jour MBO" : "NON pas de MBO") +
                 ", niveaux avec nombre d'ordres : " + _nLevelsWithOffers +
                 ", trades avec identifiants d'ordre : " + _nTicksWithIds + "/" + _nTickRt +
-                ", icebergs : " + _nIcebergTicks + ", sweeps : " + _nSweepTicks });
+                ", icebergs : " + _nIcebergTicks + ", sweeps : " + _nSweepTicks));
+            foreach (var v in _verdicts)
+                Log("VERDICT", new[] { v.Substring(0, 2), v.Substring(3) });
             foreach (var key in _errorCount.Keys.Take(20))
                 Log("ERR", new[] { key, "x" + _errorCount[key], _errorFirst[key] });
+            UpdatePanel();
+        }
+
+        // ------------------------------------------------------------ panneau sur le graphique
+        private void CreatePanel()
+        {
+            _panel.Clear();
+            try
+            {
+                int lines = 12 + PanelMaxSeries;
+                for (int i = 0; i < lines; i++)
+                {
+                    var a = VAn.CreateAnnotation(AnnotationType.Text);
+                    a.CoordinateXType = CoordinateTypeEnum.Relative;
+                    a.CoordinateYType = CoordinateTypeEnum.Relative;
+                    a.X = PanelX;
+                    a.Y = PanelY - i * PanelLineStep;
+                    a.FontSize = PanelFontSize;
+                    a.FontBold = i == 0;
+                    a.Text = i == 0 ? "Probe DeepGamma v" + Version + " : chargement de l'historique..." : "";
+                    VAn.AddAnnotation(IndVars.FrontAnnList, a);
+                    _panel.Add(a);
+                }
+            }
+            catch (Exception ex) { Err("CreatePanel", ex); }
+        }
+
+        private void UpdatePanel()
+        {
+            if (_panel.Count == 0) return;
+            try
+            {
+                _panelUpdates++;
+                var lines = new List<string>();
+                lines.Add("Probe DeepGamma v" + Version + "  |  replay=" + Safe(() => Convert.ToString(VAn.IsReplayData, IC)) +
+                          "  |  " + Safe(() => Convert.ToString(VAn.ChartPhase, IC)) + "  |  id sonde=" + Safe(() => getId().ToString(IC)) +
+                          "  |  barres=" + (_historyLastIndex + 1) + "  |  maj " + Fmt(VAn.LastExDt));
+                lines.AddRange(_verdicts);
+                lines.Add("Carnet : " + _bids.Count + " niveaux bid / " + _asks.Count + " ask, MBO=" + _nMbo +
+                          "  |  trades hist/rt=" + _nTickHist + "/" + _nTickRt);
+                lines.Add("Series lisibles (indicateur / serie : valeur derniere barre fermee, couverture historique) :");
+                foreach (var s in _readable.Take(PanelMaxSeries))
+                    lines.Add("  " + s.Ind + " " + Name(s.Ind) + " / " + s.Ser + " " + SeriesName(s.Ind, s.Ser) + " : " +
+                              (s.LastRt.Length > 0 ? s.LastRt + " (rt)" : s.Last) + "  [" + s.Coverage + "/" + _histBarsScanned + "]");
+                if (_readable.Count > PanelMaxSeries) lines.Add("  ... et " + (_readable.Count - PanelMaxSeries) + " autres");
+                foreach (var key in _errorCount.Keys.Take(2))
+                    lines.Add("Erreur " + key + " x" + _errorCount[key] + " : " + _errorFirst[key]);
+
+                for (int i = 0; i < _panel.Count; i++)
+                    _panel[i].Text = i < lines.Count ? lines[i] : "";
+            }
+            catch (Exception ex) { Err("UpdatePanel", ex); }
+        }
+
+        private string Name(int ind)
+        {
+            string n;
+            return _indNames.TryGetValue(ind, out n) ? n : "?";
+        }
+
+        private string SeriesName(int ind, int ser)
+        {
+            List<string> names;
+            return _seriesNames.TryGetValue(ind, out names) && ser < names.Count ? names[ser] : "?";
         }
 
         // ------------------------------------------------------------ utilitaires

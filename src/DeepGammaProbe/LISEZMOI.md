@@ -1,12 +1,15 @@
-# Sonde DeepGamma : protocole de test (version 3)
+# Sonde DeepGamma : protocole de test (version 4)
 
 La sonde est un indicateur DeepCharts **en lecture seule** : aucun ordre, rien de dessiné, le graphique n'est pas
 modifié.
 
 **Deepchart refuse de charger une DLL qui utilise fichiers, réseau, réflexion, threads ou `lock`**
-([troubleshooting](https://docs-indicators.deepcharts.com/troubleshooting)). La sonde écrit donc tout dans **le log de
-Deepchart**, une ligne par enregistrement, préfixe `DSPX;`. `tools/extract_dspx.py` range ensuite ces lignes en fichiers
-CSV.
+([troubleshooting](https://docs-indicators.deepcharts.com/troubleshooting)). La sonde envoie donc ses enregistrements au
+**log de Deepchart** (lignes `DSPX;`). **Constat du 04/11/2026 : ce log est chiffré sur disque**
+(`Documents\Deepchart\Logs\various_*.log`), donc illisible hors de DeepCharts. Depuis la v4, la sonde affiche aussi
+ses verdicts, ses compteurs et les séries lisibles (avec leurs noms) dans **un panneau de texte en haut à gauche du
+graphique** : c'est ce panneau qu'on lit, en capture d'écran. `tools/extract_dspx.py` ne sert que si une fenêtre de
+DeepCharts permet un jour de copier le log en clair.
 
 Elle répond à huit questions :
 
@@ -71,6 +74,12 @@ Si les séries DeepGamma valent 0 en live alors qu'elles bougent à l'écran, c'
 lisible en replay (l'issue #4 dit oui) et **si le replay rejoue le carnet** (lignes `BOOKMIN` non vides).
 
 ## 4. Récupérer les résultats
+
+**Panneau (v4)** : une capture d'écran du graphique suffit (fais-en une après le test A, à 15h45 pendant le test B, et à
+la fin du test C). Si les séries lisibles dépassent la hauteur du graphique, augmente la hauteur de la fenêtre ou
+baisse `PanelFontSize`.
+
+**Log** (seulement s'il devient lisible) :
 
 Trouve le log de Deepchart qui contient les lignes de la sonde (PowerShell, après un test) :
 

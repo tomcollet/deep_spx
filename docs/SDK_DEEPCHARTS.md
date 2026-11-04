@@ -21,9 +21,11 @@ utiliser (doc `troubleshooting`). **Documenté, et confirmé par `tools/DllCheck
 
 **Conséquences pour le projet**
 
-- La DLL **ne peut ni écrire de fichier ni ouvrir de socket.** Le seul canal de sortie est le **log de Deepchart**
-  (`VAn.AddToLog`), qu'un programme externe lit ensuite. C'est ce que fait déjà `deep` (journal CSV préfixé `OFS;`).
-  La sonde fait de même (`DSPX;`), `tools/extract_dspx.py` relit le log.
+- La DLL **ne peut ni écrire de fichier ni ouvrir de socket.** Le seul canal prévu est le **log de Deepchart**
+  (`VAn.AddToLog`). **Constaté le 04/11/2026 sur le poste de Tom : le fichier `Documents\Deepchart\Logs\various_*.log`
+  est chiffré** (lignes base64 de données chiffrées). Il n'est donc pas lisible par un programme externe, et on ne
+  cherche pas à le déchiffrer. Restent : l'affichage sur le graphique (séries, annotations, ce que fait la sonde v4),
+  les éventuelles fonctions d'export de DeepCharts, et l'API d'ordres de la DLL. Voir `docs/ARCHITECTURE.md`.
 - Pas de découverte de l'API par réflexion dans la DLL : les signatures se lisent hors de Deepchart avec
   `tools/ApiDump`, qui ouvre les DLL comme des fichiers.
 - Toujours passer `tools/DllCheck` sur la DLL avant de la charger.
@@ -167,5 +169,5 @@ la question Q8 de la sonde. Sinon, icebergs et retraits se déduisent du carnet 
 2. Séries DeepGamma lisibles, numéros et noms, profondeur d'historique → sonde, test A.
 3. Valeurs DeepGamma à 0 en live (issue #4) → sonde, test B.
 4. Carnet en replay, nombre de niveaux, MBO rempli ou non (Q8) → sonde, tests B et C.
-5. Où Deepchart écrit son log, à quelle vitesse il est vidé sur disque → test A, puis mesure dédiée si on s'en sert en
-   live.
+5. ~~Où Deepchart écrit son log~~ → `Documents\Deepchart\Logs\various_*.log`, chiffré. Reste à savoir si DeepCharts
+   affiche ce log en clair dans une fenêtre, et s'il sait exporter les valeurs d'un indicateur.

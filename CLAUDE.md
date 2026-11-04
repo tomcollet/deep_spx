@@ -17,7 +17,9 @@ travail : **français** (docs, commentaires, messages de commit).
   montré que DeepGamma est illisible.
 - **Même chaîne en Deep Replay, en simulation et en live.**
 - **Bac à sable de Deepchart** (doc troubleshooting) : la DLL n'a droit ni aux fichiers, ni au réseau, ni à la
-  réflexion, ni aux threads ni à `lock`. Sortie unique : le log de Deepchart (`VAn.AddToLog`, lignes `DSPX;`).
+  réflexion, ni aux threads ni à `lock`. Sortie prévue : le log de Deepchart (`VAn.AddToLog`, lignes `DSPX;`), **mais ce
+  log est chiffré sur disque (constaté le 04/11/2026)** : ne pas chercher à le déchiffrer. La sonde v4 affiche ses
+  résultats sur le graphique ; le canal de sortie du moteur est à redéfinir (voir `docs/ARCHITECTURE.md`).
 - **À valider par Tom (03/11/2026)** : la décision initiale « features en C#, règles en Python reliées par socket » est
   impossible (pas de socket). Proposition dans `docs/ARCHITECTURE.md` : moteur C# pur `Engine/` partagé par la DLL et
   un backtest en ligne de commande, comme dans `deep` ; Python pour explorer seulement.

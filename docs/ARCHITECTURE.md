@@ -10,6 +10,15 @@ donc pas parler directement à un programme externe.** Son seul canal de sortie 
 La première version de cette architecture prévoyait un socket local entre la DLL et un moteur Python : c'est
 impossible. Proposition ci-dessous, **à valider par Tom**.
 
+> **Mise à jour du 04/11/2026 : le log de Deepchart est chiffré sur disque.** Le « log comme bus » ci-dessous ne
+> fonctionne donc pas tel quel. Pistes à étudier quand la sonde aura parlé :
+> - **exécution depuis la DLL** par `TradingApi` (ordres, brackets, `FlatAllPositions`), puis réplication vers les
+>   autres comptes par un copieur (celui de DeepCharts ou un copieur Rithmic) au lieu du pupitre ;
+> - **signal visuel** : la DLL affiche son état sur le graphique, et un petit programme sur le PC le lit à l'écran
+>   (comme le pupitre lit déjà ses terminaux par pixels) pour piloter le pupitre ;
+> - **recherche** : le moteur tourne dans la DLL pendant le replay et affiche ses statistiques, ou on exporte les
+>   séries par une fonction d'export de DeepCharts si elle existe.
+
 ## Proposition : moteur C# pur, sur le modèle de `deep`
 
 ```
