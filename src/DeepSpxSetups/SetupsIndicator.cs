@@ -32,7 +32,7 @@ namespace DeepSpx.Setups
     public class SetupsIndicator : VolSysAPI.Indicators.Indicator
     {
         public const string Prefix = "DSPX;";
-        public const string Version = "1";
+        public const string Version = "1.1";
 
         public static IndicatorDescriptionBase Register() =>
             new IndicatorDescriptionBase
@@ -59,6 +59,9 @@ namespace DeepSpx.Setups
         public int NetFlowId { get; set; } = -1;
         public int MmPressureId { get; set; } = -1;
         public int MaxIndicatorScan { get; set; } = 40;
+        /// Heure des barres : 0 = detection automatique (reouverture Globex 18:00 a New York, 17:00 a Chicago ; ou
+        /// ouverture 09:30 / 08:30 sur un graphique en seance reguliere), 1 = New York, 2 = Chicago.
+        public int BarTimeZone { get; set; } = 0;
         /// Statistiques simulees dans le panneau. Desactivees par defaut : la periode recente est scellee (holdout), on
         /// n'y regle aucun parametre.
         public bool ShowStats { get; set; } = false;
@@ -78,6 +81,11 @@ namespace DeepSpx.Setups
 
         private int _envId, _envZero, _envMajor, _envMinor, _sumId, _sumSer, _nfId, _nfSer, _mmId, _mmSer;
         private string _mapText = "";
+        private bool _chicago;
+        private string _clockText = "";
+        private int _rtCloses;
+
+        private const int PanelLines = 18;
 
         // ------------------------------------------------------------ cycle de vie
         public override void OnSet(bool setDefault, bool themeOverride)
@@ -95,6 +103,9 @@ namespace DeepSpx.Setups
             _tick = 0.25;
             _envId = _sumId = _nfId = _mmId = -1;
             _mapText = "";
+            _chicago = false;
+            _clockText = "";
+            _rtCloses = 0;
             _engine = new SetupEngine(BuildSettings());
             CreatePanel();
             StatusMessage = "DeepSpx Setups v" + Version + " : signaux seulement, aucun ordre";
@@ -108,11 +119,13 @@ namespace DeepSpx.Setups
                 {
                     _historyDone = true;
                     _tick = DetectTick();
+                    DetectClock();
                     _engine = new SetupEngine(BuildSettings());
                     MapGamma();
                     int last = VAn.BarIndex - 1;              // la derniere barre est encore ouverte
                     for (int b = 0; b <= last; b++) Process(b);
-                    Log("HIST", new[] { "bars=" + (last + 1), "signals=" + _engine.Signals.Count, "map=" + _mapText });
+                    Log("HIST", new[] { "bars=" + (last + 1), "signals=" + _engine.Signals.Count, "map=" + _mapText,
+                        "clock=" + (_chicago ? "Chicago" : "NewYork"), "session=" + _engine.Settings.SessionText() });
                     UpdatePanel();
                     return;
                 }
@@ -133,7 +146,9 @@ namespace DeepSpx.Setups
                 int b = VAn.BarIndex;
                 if (b > _lastProcessed)
                 {
-                    if (_envId < 0) MapGamma();                // indicateurs DeepGamma ajoutes apres la sonde
+                    // un indicateur DeepGamma ajoute apres celui-ci est repere dans les 15 minutes
+                    _rtCloses++;
+                    if ((_envId < 0 || _sumId < 0 || _nfId < 0) && _rtCloses % 15 == 1) MapGamma();
                     Process(b);
                     UpdatePanel();
                 }
@@ -144,7 +159,7 @@ namespace DeepSpx.Setups
         // ------------------------------------------------------------ moteur
         private EngineSettings BuildSettings()
         {
-            return new EngineSettings
+            var s = new EngineSettings
             {
                 TickSize = _tick,
                 EnableWallReject = EnableSetupA,
@@ -157,7 +172,40 @@ namespace DeepSpx.Setups
                 MaxLossesPerDay = MaxLossesPerDay,
                 SlippageTicks = SlippageTicks
             };
+            if (_chicago) s.ShiftClock(-60);
+            return s;
         }
+
+        /// Les heures de seance du moteur suivent l'heure des barres. Repere : l'heure de la premiere barre apres une
+        /// interruption d'au moins 30 minutes (reouverture Globex, ou ouverture sur un graphique en seance reguliere).
+        private void DetectClock()
+        {
+            int ny = 0, chi = 0;
+            try
+            {
+                var bars = VAn.BarVars;
+                int last = Math.Min(VAn.BarIndex, bars.Count - 1);
+                for (int b = 1; b <= last; b++)
+                {
+                    if ((bars[b].exchDt - bars[b - 1].exchDt).TotalMinutes < 30) continue;
+                    int tod = bars[b].exchDt.Hour * 60 + bars[b].exchDt.Minute;
+                    if (Near(tod, 18 * 60) || Near(tod, 9 * 60 + 30)) ny++;
+                    else if (Near(tod, 17 * 60) || Near(tod, 8 * 60 + 30)) chi++;
+                }
+            }
+            catch { }
+            bool detectedChicago = chi > ny;
+            string how;
+            if (BarTimeZone == 1) { _chicago = false; how = "parametre"; }
+            else if (BarTimeZone == 2) { _chicago = true; how = "parametre"; }
+            else { _chicago = detectedChicago; how = ny + chi > 0 ? "detecte" : "par defaut, non detecte"; }
+            _clockText = (_chicago ? "Chicago" : "New York") + " (" + how + ")";
+            if (BarTimeZone != 0 && ny + chi > 0 && detectedChicago != _chicago)
+                _clockText += " ATTENTION : les barres semblent a l'heure de " + (detectedChicago ? "Chicago" : "New York");
+            Log("CLOCK", new[] { _chicago ? "Chicago" : "NewYork", how, "reopen_ny=" + ny, "reopen_chicago=" + chi });
+        }
+
+        private static bool Near(int tod, int target) => tod >= target && tod <= target + 5;
 
         private double DetectTick()
         {
@@ -231,8 +279,10 @@ namespace DeepSpx.Setups
             if (SummaryId >= 0) _sumId = SummaryId;
             if (NetFlowId >= 0) _nfId = NetFlowId;
             if (MmPressureId >= 0) _mmId = MmPressureId;
-            _mapText = "envelopes=" + _envId + "(" + _envZero + "/" + _envMajor + "/" + _envMinor + ") summary=" + _sumId + "(" + _sumSer +
-                       ") netflow=" + _nfId + "(" + _nfSer + ") pressure=" + _mmId + "(" + _mmSer + ")";
+            string text = "envelopes=" + _envId + "(" + _envZero + "/" + _envMajor + "/" + _envMinor + ") summary=" + _sumId + "(" + _sumSer +
+                          ") netflow=" + _nfId + "(" + _nfSer + ") pressure=" + _mmId + "(" + _mmSer + ")";
+            if (text == _mapText) return;
+            _mapText = text;
             Log("MAP", new[] { _mapText });
         }
 
@@ -344,7 +394,7 @@ namespace DeepSpx.Setups
             _panel.Clear();
             try
             {
-                for (int i = 0; i < 16; i++)
+                for (int i = 0; i < PanelLines; i++)
                 {
                     var a = VAn.CreateAnnotation(AnnotationType.Text);
                     a.CoordinateXType = CoordinateTypeEnum.Relative;
@@ -373,6 +423,9 @@ namespace DeepSpx.Setups
                           "  |  Summary " + Short(e.Summary) + "  |  pente Net Flow " + Short(e.NetFlowSlope));
                 lines.Add("DeepGamma : derniere valeur il y a " + (e.GammaAgeBars == int.MaxValue ? "-" : e.GammaAgeBars.ToString(IC)) +
                           " barres" + (e.GammaStale ? "  |  FIGE" : "") + "  |  " + _mapText);
+                lines.Add("Heure des barres : " + _clockText + "  |  seance " + e.Settings.SessionText());
+                string missing = MissingText();
+                if (missing.Length > 0) lines.Add("ATTENTION : " + missing);
                 lines.Add("VWAP " + Fmt(e.Vwap) + "  |  ATR5 " + e.Atr5.ToString("0.00", IC) + "  |  range d'ouverture " + Fmt(e.OpeningLow) +
                           " - " + Fmt(e.OpeningHigh) + "  |  veille " + Fmt(e.PrevLow) + " - " + Fmt(e.PrevHigh));
                 string state = e.Position != null ? "EN POSITION : " + Describe(e.Position) + " | entree " + Fmt(e.Position.EntryPrice)
@@ -396,6 +449,16 @@ namespace DeepSpx.Setups
                 for (int i = 0; i < _panel.Count; i++) _panel[i].Text = i < lines.Count ? lines[i] : "";
             }
             catch { }
+        }
+
+        /// Indicateurs DeepGamma absents du graphique, et ce que cela coupe.
+        private string MissingText()
+        {
+            var parts = new List<string>();
+            if (_envId < 0) parts.Add("Option Envelopes absent : aucun regime, aucun signal");
+            if (_nfId < 0 && RequireNetFlow && EnableSetupB) parts.Add("Option Net Flow absent : setup B impossible");
+            if (_sumId < 0 && UseSummarySign) parts.Add("Option Summary absent : regime lu sur le Zero Gamma seul");
+            return string.Join("  |  ", parts);
         }
 
         private static string RegimeText(Regime r) =>

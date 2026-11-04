@@ -167,11 +167,11 @@ public class FakeAnn : IAnnotation
     public bool Visible { get; set; }
     public bool PlotForeground { get; set; }
     public VolumetricaCore.ColorRef LineColor { get; set; }
-    public int LineWidth { get; set; }
+    public float LineWidth { get; set; }
     public VolumetricaCore.ColorRef BackColor { get; set; }
     public string Text { get; set; }
     public VolumetricaCore.ColorRef ForeColor { get; set; }
-    public int FontSize { get; set; }
+    public float FontSize { get; set; }
     public bool FontBold { get; set; }
     public string Tooltip { get; set; }
 }

@@ -63,6 +63,14 @@ utiliser (doc `troubleshooting`). **Documenté, et confirmé par `tools/DllCheck
   `dt` heure locale pour l'affichage, `IsNewDay`, `SessionIndex`, `Index`). Totaux `VolTotList[0]` : `TotVol`, `AskVol`,
   `BidVol`, nombres de trades `TotNTVol`/`AskNTVol`/`BidNTVol`, `MaxDeltaVol`, `MinDeltaVol`, `VwapPrice`. Ne jamais
   lire après `VAn.BarIndex` pendant l'historique.
+- **`exchDt` est à l'heure de New York** sur le graphique options SPX (ES-CME) : constaté le 04/11/2026 (dernière barre
+  12:19 à 18:19 heure de Paris ; première barre de l'historique à 18:00, réouverture Globex). Ce n'est pas l'heure de
+  Chicago du CME. L'indicateur de setups le vérifie lui-même (`DSPX;CLOCK`).
+- **Niveaux d'Option Envelopes déjà en prix ES** : Major et Minor Gamma = strike SPX + base ES - SPX (décimales qui
+  varient dans la journée : 7729,325 puis 7739,175 ; Major - Minor = 60 points). Constaté le 04/11/2026, à confirmer
+  sur la ligne tracée.
+- **Historique DeepGamma** : le graphique 1 minute du 04/11/2026 couvrait 15 jours (première barre le 20/10/2026,
+  14 900 barres), avec des valeurs DeepGamma au moins 390 barres en arrière. Profondeur maximale non testée. Recharger seulement l'indicateur ne relivre pas les trades historiques (`hist_trades=0`).
 - Volume par prix : `NeedVbp = true`, puis `bar.PriceList` et `bar.VbpListAll[pinT][0]` (peut être `null`).
 - Trade (`Feed.TickByTick`) : `price`, `PinT`, `Vol`, `QtyOrd`, `CumVol`, `AggrSide` (`Ask` = 1, `Bid` = -1,
   `Between` = 0), `bid`, `ask` au moment du trade, `exDt` heure de bourse, `locDt` heure locale, **`AggrID` et `RestID`

@@ -43,6 +43,8 @@ namespace DeepSpx.Engine
         public readonly List<Signal> NewExits = new List<Signal>();
         public readonly SetupStats StatsA = new SetupStats(), StatsB = new SetupStats(), StatsC = new SetupStats(), StatsAll = new SetupStats();
 
+        public EngineSettings Settings => S;
+
         public SetupEngine(EngineSettings settings)
         {
             S = settings ?? new EngineSettings();

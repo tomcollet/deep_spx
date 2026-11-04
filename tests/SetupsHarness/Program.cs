@@ -9,69 +9,112 @@ using VolumetricaAPI.Chart;
 using Feed = VolumetricaAPI.Connection.Structure;
 using static VolSysAPI.ExternalStructure;
 
-var van = new FakeVAn();
-var day1 = new DateTime(2026, 10, 13);
-var day2 = new DateTime(2026, 10, 14);
-void Add(DateTime t, double o, double h, double l, double c, long ask, long bid)
+// Le meme graphique est joue deux fois : barres a l'heure de Chicago (ouverture 08:30) puis a l'heure de New York
+// (09:30, cas du graphique de Tom). L'indicateur doit reconnaitre l'horloge et donner le meme signal.
+var allOk = true;
+foreach (var (shift, clock) in new[] { (0, "Chicago"), (60, "NewYork") })
 {
-    van.BarVars.Add(new Structure.BarClass
-    {
-        exchDt = t, Index = van.BarVars.Count, Open = o, High = h, Low = l, Close = c,
-        OpenInT = (int)(o / 0.25), HighInT = (int)(h / 0.25), LowInT = (int)(l / 0.25), CloseInT = (int)(c / 0.25),
-        VolTotList = new[] { new Structure.InfoVolClass { TotVol = ask + bid, AskVol = ask, BidVol = bid, VwapPrice = (h + l + c) / 3 } }
-    });
+    var van = new FakeVAn();
+    RunChart(van, shift, clock);
 }
-var rnd = new Random(7);
-for (int m = 0; m < 390; m++)
-    Add(day1.AddMinutes(510 + m), 5000, m == 120 ? 5020 : 5001, m == 200 ? 4980 : 4999, 5000, 100 + rnd.Next(0, 40), 100 + rnd.Next(0, 40));
-for (int m = 0; m < 30; m++) Add(day2.AddMinutes(510 + m), 5002, 5004, 5000, 5002, 210, 200);
-for (int m = 30; m < 40; m++) Add(day2.AddMinutes(510 + m), 5002, 5003, 5001, 5002, 210, 200);
-int signalBar = van.BarVars.Count;
-Add(day2.AddMinutes(550), 5003, 5007, 5003, 5006, 800, 200);      // 09:10 : cassure du range d'ouverture
-Add(day2.AddMinutes(551), 5006.5, 5010, 5006, 5009, 250, 200);   // barre encore ouverte a la fin de l'historique
 
-var ind = new SetupsIndicator();
-typeof(VolSysAPI.Indicators.Indicator).GetField("<VAn>k__BackingField", BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(ind, van);
-typeof(VolSysAPI.Indicators.Indicator).GetField("<IndVars>k__BackingField", BindingFlags.NonPublic | BindingFlags.Instance)!
-    .SetValue(ind, new VolSysAPI.Indicators.IndVarsClass());
-
-ind.OnSet(true, false);
-ind.OnLoad();
-van.BarIndex = van.BarVars.Count - 1;
-ind.OnEnd(false);                                                 // rejeu de l'historique
-
-// Temps reel : la barre 09:11 se ferme, puis 09:12 et 09:13 montent jusqu'a l'objectif (plus haut de la veille 5020)
-Add(day2.AddMinutes(552), 5009, 5014, 5008, 5013, 250, 200);
-van.BarIndex = van.BarVars.Count - 2; ind.OnClose(true);          // ferme 09:11
-van.BarIndex = van.BarVars.Count - 1; ind.OnClose(true);          // ferme 09:12
-Add(day2.AddMinutes(553), 5013, 5021, 5012, 5020.5, 250, 200);
-van.BarIndex = van.BarVars.Count - 1; ind.OnClose(true);          // ferme 09:13 : objectif
-ind.OnEnd(true);
-
-var lines = van.Log.Where(l => l.StartsWith(SetupsIndicator.Prefix)).ToList();
-foreach (var l in lines) Console.WriteLine(l);
-var panel = van.Annotations.Where(a => a.CoordinateXType == CoordinateTypeEnum.Relative).Select(a => a.Text ?? "").ToList();
-Console.WriteLine("\nPanneau :");
-foreach (var t in panel.Where(t => t.Length > 0)) Console.WriteLine("  | " + t);
-var marks = van.Annotations.Where(a => a.CoordinateXType == CoordinateTypeEnum.Absolute).ToList();
-Console.WriteLine();
-
-var sig = lines.FirstOrDefault(l => l.StartsWith("DSPX;SIG;"));
-var checks = new (string label, bool ok)[]
+// Graphique de Tom du 04/11/2026 a 18h19 : Option Envelopes present, ni Option Summary ni Option Net Flow.
 {
-    ("Reperage par nom des indicateurs DeepGamma", lines.Any(l => l == "DSPX;MAP;envelopes=1(0/1/2) summary=10(0) netflow=15(2) pressure=7(0)")),
-    ("Signal B achat sur la barre de cassure (rejeu de l'historique)", sig != null && sig.StartsWith("DSPX;SIG;1;2026-10-14 09:10;B;LONG;ShortGamma;range d'ouverture haut;5004;5006;5003;5020;")),
-    ("Entree a l'ouverture suivante + 1 tick", lines.Any(l => l == "DSPX;FILL;1;2026-10-14 09:11;5006.75")),
-    ("Sortie a l'objectif en temps reel : +52 ticks", lines.Any(l => l == "DSPX;EXIT;1;2026-10-14 09:13;Target;5019.75;52")),
-    ("Fleche + etiquette du signal, resultat a la sortie", marks.Count(a => a.AnnotationType == AnnotationType.ArrowUp) == lines.Count(l => l.StartsWith("DSPX;SIG;") && l.Contains(";LONG;")) && marks.Any(a => a.Text == "B achat") && marks.Any(a => a.Text == "+52 t")),
-    ("Panneau : regime short gamma", panel.Any(t => t.Contains("SHORT GAMMA"))),
-    ("Panneau : dernier signal et son resultat", panel.Any(t => t.Contains("B #1 achat") && t.Contains("Target +52 t"))),
-    ("Aucune erreur", !lines.Any(l => l.StartsWith("DSPX;ERR;"))),
-};
-foreach (var c in checks) Console.WriteLine((c.ok ? "OK    " : "ECHEC ") + c.label);
-return checks.All(c => c.ok) ? 0 : 1;
+    var van = new FakeVAn();
+    van.Hidden.Add(10);
+    van.Hidden.Add(15);
+    RunChart(van, 60, "NewYork");
+}
+return allOk ? 0 : 1;
 
-/// Faux VAn : faux indicateurs DeepGamma. Envelopes Zero 5100 / Major 5060 / Minor 4970 (prix sous le Zero Gamma),
+void RunChart(FakeVAn van, int shift, string clock)
+{
+    bool complete = van.Hidden.Count == 0;
+    var day1 = new DateTime(2026, 10, 13);
+    var day2 = new DateTime(2026, 10, 14);
+    void Add(DateTime t, double o, double h, double l, double c, long ask, long bid)
+    {
+        van.BarVars.Add(new Structure.BarClass
+        {
+            exchDt = t.AddMinutes(shift), Index = van.BarVars.Count, Open = o, High = h, Low = l, Close = c,
+            OpenInT = (int)(o / 0.25), HighInT = (int)(h / 0.25), LowInT = (int)(l / 0.25), CloseInT = (int)(c / 0.25),
+            VolTotList = new[] { new Structure.InfoVolClass { TotVol = ask + bid, AskVol = ask, BidVol = bid, VwapPrice = (h + l + c) / 3 } }
+        });
+    }
+    var rnd = new Random(7);
+    for (int m = 0; m < 390; m++)
+        Add(day1.AddMinutes(510 + m), 5000, m == 120 ? 5020 : 5001, m == 200 ? 4980 : 4999, 5000, 100 + rnd.Next(0, 40), 100 + rnd.Next(0, 40));
+    for (int m = 0; m < 30; m++) Add(day2.AddMinutes(510 + m), 5002, 5004, 5000, 5002, 210, 200);
+    for (int m = 30; m < 40; m++) Add(day2.AddMinutes(510 + m), 5002, 5003, 5001, 5002, 210, 200);
+    Add(day2.AddMinutes(550), 5003, 5007, 5003, 5006, 800, 200);      // 09:10 Chicago : cassure du range d'ouverture
+    Add(day2.AddMinutes(551), 5006.5, 5010, 5006, 5009, 250, 200);   // barre encore ouverte a la fin de l'historique
+
+    var ind = new SetupsIndicator();
+    typeof(VolSysAPI.Indicators.Indicator).GetField("<VAn>k__BackingField", BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(ind, van);
+    typeof(VolSysAPI.Indicators.Indicator).GetField("<IndVars>k__BackingField", BindingFlags.NonPublic | BindingFlags.Instance)!
+        .SetValue(ind, new VolSysAPI.Indicators.IndVarsClass());
+
+    ind.OnSet(true, false);
+    ind.OnLoad();
+    van.BarIndex = van.BarVars.Count - 1;
+    ind.OnEnd(false);                                                 // rejeu de l'historique
+
+    // Temps reel : la barre suivant la cassure se ferme, puis les deux suivantes montent jusqu'a l'objectif (plus haut de la veille 5020)
+    Add(day2.AddMinutes(552), 5009, 5014, 5008, 5013, 250, 200);
+    van.BarIndex = van.BarVars.Count - 2; ind.OnClose(true);
+    van.BarIndex = van.BarVars.Count - 1; ind.OnClose(true);
+    Add(day2.AddMinutes(553), 5013, 5021, 5012, 5020.5, 250, 200);
+    van.BarIndex = van.BarVars.Count - 1; ind.OnClose(true);          // objectif
+    ind.OnEnd(true);
+
+    string T(int minute) => day2.AddMinutes(minute + shift).ToString("yyyy-MM-dd HH:mm");
+    var lines = van.Log.Where(l => l.StartsWith(SetupsIndicator.Prefix)).ToList();
+    Console.WriteLine("==== Barres a l'heure de " + clock);
+    foreach (var l in lines) Console.WriteLine(l);
+    var panel = van.Annotations.Where(a => a.CoordinateXType == CoordinateTypeEnum.Relative).Select(a => a.Text ?? "").ToList();
+    Console.WriteLine("\nPanneau :");
+    foreach (var t in panel.Where(t => t.Length > 0)) Console.WriteLine("  | " + t);
+    var marks = van.Annotations.Where(a => a.CoordinateXType == CoordinateTypeEnum.Absolute).ToList();
+    Console.WriteLine();
+
+    var sig = lines.FirstOrDefault(l => l.StartsWith("DSPX;SIG;"));
+    if (!complete)
+    {
+        var partial = new (string label, bool ok)[]
+        {
+            ("Sans Summary ni Net Flow : reperage", lines.Any(l => l == "DSPX;MAP;envelopes=1(0/1/2) summary=-1(0) netflow=-1(2) pressure=7(0)")),
+            ("Sans Net Flow : pas de setup B", sig == null),
+            ("Sans Summary : regime lu sur le Zero Gamma (prix dessous -> short gamma)", panel.Any(t => t.Contains("SHORT GAMMA"))),
+            ("Panneau : avertissement Net Flow et Summary absents", panel.Any(t => t.StartsWith("ATTENTION") && t.Contains("Net Flow absent") && t.Contains("Summary absent"))),
+            ("Aucune erreur", !lines.Any(l => l.StartsWith("DSPX;ERR;"))),
+        };
+        Console.WriteLine("(graphique sans Option Summary ni Option Net Flow)");
+        foreach (var c in partial) Console.WriteLine((c.ok ? "OK    " : "ECHEC ") + c.label);
+        Console.WriteLine();
+        allOk &= partial.All(c => c.ok);
+        return;
+    }
+    var checks = new (string label, bool ok)[]
+    {
+        ("Horloge des barres reconnue : " + clock, lines.Any(l => l.StartsWith("DSPX;CLOCK;" + clock + ";detecte;"))),
+        ("Reperage par nom des indicateurs DeepGamma", lines.Any(l => l == "DSPX;MAP;envelopes=1(0/1/2) summary=10(0) netflow=15(2) pressure=7(0)")),
+        ("Signal B achat sur la barre de cassure (rejeu de l'historique)", sig != null && sig.StartsWith("DSPX;SIG;1;" + T(550) + ";B;LONG;ShortGamma;range d'ouverture haut;5004;5006;5003;5020;")),
+        ("Entree a l'ouverture suivante + 1 tick", lines.Any(l => l == "DSPX;FILL;1;" + T(551) + ";5006.75")),
+        ("Sortie a l'objectif en temps reel : +52 ticks", lines.Any(l => l == "DSPX;EXIT;1;" + T(553) + ";Target;5019.75;52")),
+        ("Fleche + etiquette du signal, resultat a la sortie", marks.Count(a => a.AnnotationType == AnnotationType.ArrowUp) == lines.Count(l => l.StartsWith("DSPX;SIG;") && l.Contains(";LONG;")) && marks.Any(a => a.Text == "B achat") && marks.Any(a => a.Text == "+52 t")),
+        ("Panneau : regime short gamma", panel.Any(t => t.Contains("SHORT GAMMA"))),
+        ("Panneau : heure des barres et horaires de seance", panel.Any(t => t.StartsWith("Heure des barres : " + (clock == "Chicago" ? "Chicago" : "New York") + " (detecte)") &&
+            t.Contains(clock == "Chicago" ? "08:30-15:00" : "09:30-16:00"))),
+        ("Panneau : dernier signal et son resultat", panel.Any(t => t.Contains("B #1 achat") && t.Contains("Target +52 t"))),
+        ("Panneau : aucun indicateur DeepGamma manquant", !panel.Any(t => t.StartsWith("ATTENTION"))),
+        ("Aucune erreur", !lines.Any(l => l.StartsWith("DSPX;ERR;"))),
+    };
+    foreach (var c in checks) Console.WriteLine((c.ok ? "OK    " : "ECHEC ") + c.label);
+    Console.WriteLine();
+    allOk &= checks.All(c => c.ok);
+}
+
+/// Faux VAn : faux indicateurs DeepGamma. Envelopes Zero ~5100 / Major 5060 / Minor 4970 (prix sous le Zero Gamma),
 /// Summary negatif, Net Flow croissant (pente positive), MM Pressure constant.
 public class FakeVAn : IMethodCloudAPI
 {
@@ -86,6 +129,7 @@ public class FakeVAn : IMethodCloudAPI
     public Structure.ChartPhaseEnum ChartPhase => Structure.ChartPhaseEnum.Realtime;
     public List<string> Log = new();
     public List<FakeAnn> Annotations = new();
+    public HashSet<int> Hidden = new();
 
     public IChartPoint AddPointToSeries(IChartSeries Series, int IndexBar, double YValue = 0, bool IsHidden = false, bool IsBreak = false) => null;
     public IAnnotation CreateAnnotation(AnnotationType annType) { var a = new FakeAnn { AnnotationType = annType }; Annotations.Add(a); return a; }
@@ -112,16 +156,18 @@ public class FakeVAn : IMethodCloudAPI
 
     public BaseIndicatorPrms GetParamsById(int IndicatorIndex)
     {
-        if (!Indicators.TryGetValue(IndicatorIndex, out var d)) return null;
+        if (Hidden.Contains(IndicatorIndex) || !Indicators.TryGetValue(IndicatorIndex, out var d)) return null;
         return new BaseIndicatorPrms { name = d.name, v_series = d.series.Select(n => new Series_Prop { Name = n }).ToList() };
     }
 
     public double[] GetSeriesValueById(int IndicatorIndex, int SubgraphIndex, int Index)
     {
+        if (Hidden.Contains(IndicatorIndex)) return null;
         switch (IndicatorIndex)
         {
             case 0: return new[] { BarVars[Index].Close };
-            case 1: return new[] { SubgraphIndex == 0 ? 5100.0 : SubgraphIndex == 1 ? 5060.0 : 4970.0 };
+            // Zero Gamma derive un peu a chaque barre, comme sur le graphique de Tom (7714,67 -> 7715,00 en 10 minutes)
+            case 1: return new[] { SubgraphIndex == 0 ? 5100.0 + Index * 0.001 : SubgraphIndex == 1 ? 5060.0 : 4970.0 };
             case 7: return new[] { 1e8, 9e7 };
             case 10: return new[] { -2e9 };
             case 15: return new[] { SubgraphIndex == 2 ? 1000.0 + Index : 0.0 };
@@ -143,11 +189,11 @@ public class FakeAnn : IAnnotation
     public bool Visible { get; set; }
     public bool PlotForeground { get; set; }
     public VolumetricaCore.ColorRef LineColor { get; set; }
-    public int LineWidth { get; set; }
+    public float LineWidth { get; set; }
     public VolumetricaCore.ColorRef BackColor { get; set; }
     public string Text { get; set; }
     public VolumetricaCore.ColorRef ForeColor { get; set; }
-    public int FontSize { get; set; }
+    public float FontSize { get; set; }
     public bool FontBold { get; set; }
     public string Tooltip { get; set; }
 }

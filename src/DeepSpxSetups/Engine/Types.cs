@@ -26,7 +26,7 @@ namespace DeepSpx.Engine
         public double MmPressure = double.NaN;      // Option Market Maker Pressure / MM Pressure (journalise seulement)
     }
 
-    /// Une barre fermee. Time = heure de bourse (Chicago pour le CME) du debut de la barre.
+    /// Une barre fermee. Time = heure du debut de la barre, telle que le graphique la donne (exchDt : New York chez Tom).
     public sealed class BarInput
     {
         public int Index;

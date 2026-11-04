@@ -50,6 +50,8 @@ travail : **français** (docs, commentaires, messages de commit).
   - setups : `dotnet run --project tests/EngineChecks`, `dotnet build tests/SetupsCompileCheck`, puis
     `dotnet run --project tools/DllCheck -- tests/SetupsCompileCheck/bin/Debug/net10.0/SetupsCompileCheck.dll`, puis
     `dotnet run --project tests/SetupsHarness` (tout en OK).
+- **Heures** : `exchDt` est à l'heure de New York sur le graphique de Tom (constaté le 04/11/2026). Le moteur est réglé
+  à New York par défaut ; l'indicateur détecte l'horloge des barres (`DSPX;CLOCK`). Ne jamais supposer Chicago.
 - **Rien dans `Engine/` ne dépend de Deepchart** (ni `VolSysAPI`, ni `VolumetricaCore`) et tout y respecte aussi le bac
   à sable, puisque le même code est compilé dans la DLL.
 - **Dans la DLL** : pas d'indexeur `this[...]`, pas de `params`, pas de `ex.GetType().Name`, pas de `System.IO`,
@@ -68,8 +70,10 @@ travail : **français** (docs, commentaires, messages de commit).
 
 ## Prochaine action
 
-1. Tom compile et pose l'indicateur de setups ; vérifier que le Zero Gamma du panneau tombe sur la ligne DeepGamma
-   (sinon `ApplyOptionOffset`, ou les niveaux sont en prix SPX).
+1. Tom compile et pose l'indicateur de setups (v1.1) : le build n'avait pas produit la DLL le 04/11 (message d'erreur
+   attendu). Vérifier `DSPX;CLOCK` (New York attendu) et que le Zero Gamma du panneau tombe sur la ligne DeepGamma
+   (niveaux a priori déjà en prix ES : `ApplyOptionOffset` désactivé). Remettre Option Summary et Option Net Flow sur le
+   graphique.
 2. Test B de la sonde en séance US (Q7, issue #4) : si DeepGamma est figé ou nul en live, l'indicateur reste en régime
    inconnu, ce qui est voulu ; la recherche continue en Deep Replay.
 3. Test C (Deep Replay), lignes capturées par `tools/read_log_window.py --follow`.

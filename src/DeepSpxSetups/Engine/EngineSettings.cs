@@ -5,13 +5,15 @@ namespace DeepSpx.Engine
     /// scellee (seances a partir du 16/08/2026).
     public sealed class EngineSettings
     {
-        // ---- Marche et seance (heure de bourse, Chicago)
+        // ---- Marche et seance, a l'heure des barres. Par defaut l'heure de New York : c'est celle des barres (exchDt)
+        //      du graphique options SPX de Tom (constate le 04/11/2026), et celle de docs/STRATEGIE.md. Barres a l'heure
+        //      de Chicago : ShiftClock(-60).
         public double TickSize = 0.25;
-        public int RthStartMinute = 8 * 60 + 30;        // 08:30
-        public int RthEndMinute = 15 * 60;              // 15:00
+        public int RthStartMinute = 9 * 60 + 30;        // 09:30 New York
+        public int RthEndMinute = 16 * 60;              // 16:00
         public int NoTradeFirstMinutes = 5;             // pas d'entree les 5 premieres minutes
-        public int LastEntryMinute = 14 * 60 + 45;      // 14:45 : plus d'entree
-        public int ForcedExitMinute = 14 * 60 + 45;     // 14:45 : FLAT obligatoire
+        public int LastEntryMinute = 15 * 60 + 45;      // 15:45 : plus d'entree
+        public int ForcedExitMinute = 15 * 60 + 45;     // 15:45 : FLAT obligatoire
         public int OpeningRangeMinutes = 30;
 
         // ---- Mesures
@@ -44,7 +46,7 @@ namespace DeepSpx.Engine
 
         // ---- Setup C : aimant de fin de seance (long gamma)
         public bool EnablePin = true;
-        public int PinStartMinute = 13 * 60;            // 13:00 Chicago = 14:00 New York
+        public int PinStartMinute = 14 * 60;            // 14:00 New York
         public double PinMaxDistAtr = 2.0;              // le strike aimant (Major Gamma) a moins de 2 ATR5
         public int PinMinDevTicks = 8;                  // ecart minimal au strike pour entrer
 
@@ -60,5 +62,23 @@ namespace DeepSpx.Engine
         public int MaxTradesPerDay = 3;
         public int MaxLossesPerDay = 2;
         public double SlippageTicks = 1;                // chaque execution (entree et sortie) au marche, 1 tick contre soi
+
+        /// Decale toutes les heures de seance (barres a l'heure de Chicago : -60).
+        public void ShiftClock(int minutes)
+        {
+            RthStartMinute += minutes;
+            RthEndMinute += minutes;
+            LastEntryMinute += minutes;
+            ForcedExitMinute += minutes;
+            PinStartMinute += minutes;
+        }
+
+        /// Heures de seance en clair, pour le panneau.
+        public string SessionText()
+        {
+            return Hm(RthStartMinute) + "-" + Hm(RthEndMinute) + ", aimant des " + Hm(PinStartMinute) + ", FLAT " + Hm(ForcedExitMinute);
+        }
+
+        private static string Hm(int minute) => (minute / 60).ToString("00") + ":" + (minute % 60).ToString("00");
     }
 }

@@ -1,4 +1,4 @@
-# Indicateur de setups (v1)
+# Indicateur de setups (v1.1)
 
 `src/DeepSpxSetups` : indicateur DeepCharts **« DeepSpx - Setups gamma x order flow »**. Il signale des achats et des
 ventes selon les trois setups de [STRATEGIE.md](STRATEGIE.md), dessine les signaux et leur résultat simulé, et
@@ -22,7 +22,15 @@ Graphique options SPX (ES-CME, 1 min) + indicateurs DeepGamma + DeepSpx Setups
   paramètres `EnvelopesId`, `SummaryId`, `NetFlowId` et `MmPressureId` forcent un numéro.
 - **Historique** : rejoué d'un bloc à la fin du chargement (`OnEnd(false)`), barre par barre, une fois que DeepGamma a
   calculé ses valeurs. **Temps réel** : une barre à chaque fermeture (`OnClose`). Même moteur, même ordre des calculs.
-- **Barres** : 1 minute, heure de bourse (Chicago). Delta = volume à l'ask − volume au bid de la barre.
+- **Barres** : 1 minute. Delta = volume à l'ask − volume au bid de la barre.
+- **Heure des barres** : sur le graphique options SPX de Tom, `exchDt` est à **l'heure de New York** (constaté le
+  04/11/2026 : dernière barre 12:19 à 18:19 heure de Paris, première barre 18:00 = réouverture Globex). Toutes les
+  heures ci-dessous sont donc à New York, comme dans STRATEGIE.md. L'indicateur le vérifie au chargement (heure de la
+  première barre après chaque interruption : 18:00 ou 09:30 à New York, 17:00 ou 08:30 à Chicago) et décale ses horaires
+  d'une heure si les barres sont à l'heure de Chicago. Ligne `DSPX;CLOCK`, et rappel dans le panneau. Paramètre
+  `BarTimeZone` : 0 automatique, 1 New York, 2 Chicago.
+- **Indicateurs DeepGamma ajoutés après coup** : repérés dans les 15 minutes, sans recharger. Le panneau signale ceux
+  qui manquent et ce que cela coupe (sans Net Flow, pas de setup B ; sans Summary, régime lu sur le Zero Gamma seul).
 
 ## Régime
 
@@ -51,13 +59,13 @@ régulière précédente, Major, Minor et Zero Gamma.
 - Stop : 4 ticks de l'autre côté du niveau (8 ticks au moins de la clôture). Objectif : niveau suivant dans le sens du
   trade (8 ticks au moins), sinon 2 ATR5. Sortie au temps : 60 barres.
 
-**C. Aimant de fin de séance (long gamma, à partir de 13:00 Chicago).** Strike aimant = Major Gamma.
+**C. Aimant de fin de séance (long gamma, à partir de 14:00 New York).** Strike aimant = Major Gamma.
 - Le prix est à 8 ticks au moins et 2 ATR5 au plus du strike, le delta pousse à l'opposé du strike (au-dessus de son
   90e percentile) et la barre ne clôture pas sur son extrême : entrée vers le strike.
-- Objectif : le strike. Stop : 1 ATR5 au-delà de l'extrême. FLAT à 14:45.
+- Objectif : le strike. Stop : 1 ATR5 au-delà de l'extrême. FLAT à 15:45.
 
-**Filtres communs** : séance régulière 08:30-15:00 Chicago ; pas d'entrée les 5 premières minutes ni après 14:45 ; FLAT
-de tout à 14:45 ; une position à la fois ; 3 signaux par jour au plus ; arrêt après 2 pertes.
+**Filtres communs** : séance régulière 09:30-16:00 New York ; pas d'entrée les 5 premières minutes ni après 15:45 ;
+FLAT de tout à 15:45 ; une position à la fois ; 3 signaux par jour au plus ; arrêt après 2 pertes.
 
 ## Exécution simulée
 
@@ -96,22 +104,32 @@ de tout à 14:45 ; une position à la fois ; 3 signaux par jour au plus ; arrêt
 `EnableSetupA/B/C`, `RequireNetFlow`, `UseSummarySign`, `BlockOnStaleGamma`, `MaxTradesPerDay` (3), `MaxLossesPerDay`
 (2), `SlippageTicks` (1), `ApplyOptionOffset` (ajoute l'écart indice/future de la barre aux niveaux DeepGamma, si ceux-ci
 s'avèrent être en prix SPX), `EnvelopesId`, `SummaryId`, `NetFlowId`, `MmPressureId` (-1 = automatique),
-`MaxIndicatorScan`, `ShowStats`, `PanelFontSize`, `PanelX`, `PanelY`, `PanelLineStep`. Les autres seuils sont dans
+`MaxIndicatorScan`, `BarTimeZone`, `ShowStats`, `PanelFontSize`, `PanelX`, `PanelY`, `PanelLineStep`. Les autres seuils sont dans
 `Engine/EngineSettings.cs`.
 
 ## Vérifications
 
 ```
-dotnet run --project tests/EngineChecks     # 25 scénarios du moteur
+dotnet run --project tests/EngineChecks     # 28 scénarios du moteur, dont l'heure de New York
 dotnet build tests/SetupsCompileCheck       # compile contre l'imitation de l'API, avertissements = erreurs
 dotnet run --project tools/DllCheck -- tests/SetupsCompileCheck/bin/Debug/net10.0/SetupsCompileCheck.dll
-dotnet run --project tests/SetupsHarness    # faux graphique : repérage, rejeu, temps réel, journal, panneau
+dotnet run --project tests/SetupsHarness    # faux graphique : horloge Chicago et New York, graphique sans Summary ni Net Flow
 ```
 
-## À vérifier sur le graphique de Tom
+## Constaté sur le graphique de Tom (04/11/2026, 18h19)
 
-1. **Niveaux en prix ES ou SPX ?** Le Zero Gamma du panneau doit tomber sur la ligne Zero Gamma tracée par DeepGamma sur
-   le graphique. Sinon, activer `ApplyOptionOffset`.
+- **Niveaux en prix ES** : Major 7739,175 et Minor 7679,175 (écart de 60 points, mêmes décimales qui varient dans la
+  journée : 7729,325 une heure plus tôt). Ce sont des strikes SPX décalés de la base ES - SPX : DeepGamma convertit
+  déjà ses niveaux en prix ES. `ApplyOptionOffset` reste désactivé (à confirmer : le Zero Gamma du panneau doit tomber
+  sur la ligne tracée).
+- **Historique DeepGamma** : depuis le 20/10/2026 sur ce graphique (14 900 barres de 1 minute). Tout est dans la
+  période scellée : les études demanderont des séances plus anciennes (Deep Replay ou historique plus long).
+- **Ce graphique-là** n'avait ni Option Summary ni Option Net Flow ni Market Maker Pressure : à remettre pour les
+  setups.
+
+## À vérifier
+
+1. **Zero Gamma du panneau = ligne Zero Gamma tracée par DeepGamma.**
 2. **DeepGamma en live** (issue #4) : si le panneau passe en « régime inconnu, DeepGamma figé » ou « trop ancien »
    pendant la séance US, la lecture live est bloquée et l'indicateur ne signale rien, comme prévu.
 3. **Summary toujours négatif** sur les séances lues le 04/11/2026 : le régime sera surtout short gamma, donc surtout des

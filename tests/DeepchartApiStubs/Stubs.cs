@@ -97,7 +97,7 @@ namespace VolumetricaAPI.Chart
 
     public interface IAnnotation
     {
-        AnnotationType AnnotationType { get; }
+        AnnotationType AnnotationType { get; set; }
         double X { get; set; }
         double Y { get; set; }
         double X2 { get; set; }
@@ -108,11 +108,11 @@ namespace VolumetricaAPI.Chart
         bool Visible { get; set; }
         bool PlotForeground { get; set; }
         ColorRef LineColor { get; set; }
-        int LineWidth { get; set; }
+        float LineWidth { get; set; }
         ColorRef BackColor { get; set; }
         string Text { get; set; }
         ColorRef ForeColor { get; set; }
-        int FontSize { get; set; }
+        float FontSize { get; set; }
         bool FontBold { get; set; }
         string Tooltip { get; set; }
     }

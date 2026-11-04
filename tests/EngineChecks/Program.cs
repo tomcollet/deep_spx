@@ -10,6 +10,22 @@ void Check(string label, bool ok, string detail = "")
 }
 
 // ---------------------------------------------------------------- outils
+// Les scenarios 1 a 8 sont ecrits a l'heure de Chicago (seance 08:30-15:00) : reglages decales de -60 minutes.
+// Le scenario 9 verifie le reglage par defaut, a l'heure de New York.
+EngineSettings Chicago()
+{
+    var st = new EngineSettings();
+    st.ShiftClock(-60);
+    return st;
+}
+
+EngineSettings ChicagoLimited()
+{
+    var st = Chicago();
+    st.MaxTradesPerDay = 1;
+    return st;
+}
+
 var day1 = new DateTime(2026, 10, 13);
 var day2 = new DateTime(2026, 10, 14);
 
@@ -54,33 +70,33 @@ List<Signal> Run(SetupEngine e, IEnumerable<BarInput> bars)
 
 // ================================================================ 1. Regime
 {
-    var e = new SetupEngine(new EngineSettings());
+    var e = new SetupEngine(Chicago());
     int idx = 0;
     double nf = 0;
     Run(e, CalmDay(day1, i => G(4900, 5060, 4970, 1e9, nf += 1), ref idx));
     Check("Regime : prix au-dessus du Zero Gamma, Summary positif -> LONG GAMMA", e.Regime == Regime.LongGamma, e.Regime + " " + e.RegimeReason);
 
-    var e2 = new SetupEngine(new EngineSettings());
+    var e2 = new SetupEngine(Chicago());
     idx = 0; nf = 0;
     Run(e2, CalmDay(day1, i => G(4900, 5060, 4970, -1e9, nf += 1), ref idx));
     Check("Regime : Summary negatif -> SHORT GAMMA", e2.Regime == Regime.ShortGamma, e2.Regime + " " + e2.RegimeReason);
 
-    var e3 = new SetupEngine(new EngineSettings());
+    var e3 = new SetupEngine(Chicago());
     idx = 0; nf = 0;
     Run(e3, CalmDay(day1, i => G(5100, 5060, 4970, 1e9, nf += 1), ref idx));
     Check("Regime : prix sous le Zero Gamma -> SHORT GAMMA", e3.Regime == Regime.ShortGamma, e3.Regime + " " + e3.RegimeReason);
 
-    var e4 = new SetupEngine(new EngineSettings());
+    var e4 = new SetupEngine(Chicago());
     idx = 0; nf = 0;
     Run(e4, CalmDay(day1, i => G(5000.25, 5060, 4970, 1e9, nf += 1), ref idx));
     Check("Regime : prix a moins de 0,5 ATR5 du Zero Gamma -> TRANSITION", e4.Regime == Regime.Transition, e4.Regime + " " + e4.RegimeReason);
 
-    var e5 = new SetupEngine(new EngineSettings());
+    var e5 = new SetupEngine(Chicago());
     idx = 0;
     Run(e5, CalmDay(day1, i => G(4900, 5060, 4970, 1e9, 42), ref idx));
     Check("Regime : DeepGamma fige plus de 45 barres -> INCONNU", e5.Regime == Regime.Unknown && e5.GammaStale, e5.Regime + " " + e5.RegimeReason);
 
-    var e6 = new SetupEngine(new EngineSettings());
+    var e6 = new SetupEngine(Chicago());
     idx = 0; nf = 0;
     Run(e6, CalmDay(day1, i => i < 300 ? G(4900, 5060, 4970, 1e9, nf += 1) : G(0, 0, 0, 0, 0), ref idx));
     Check("Regime : DeepGamma a 0 en live (issue #4) pendant 90 barres -> INCONNU", e6.Regime == Regime.Unknown, e6.Regime + " " + e6.RegimeReason);
@@ -89,7 +105,7 @@ List<Signal> Run(SetupEngine e, IEnumerable<BarInput> bars)
 
 // ================================================================ 2. Setup B : cassure du range d'ouverture en short gamma
 {
-    var e = new SetupEngine(new EngineSettings());
+    var e = new SetupEngine(Chicago());
     int idx = 0;
     double nf = 0;
     Run(e, CalmDay(day1, i => G(5100, 5060, 4970, -1e9, nf += 1), ref idx));
@@ -117,7 +133,7 @@ List<Signal> Run(SetupEngine e, IEnumerable<BarInput> bars)
 
 // ================================================================ 3. Setup B sans confirmation du Net Flow : pas de signal
 {
-    var e = new SetupEngine(new EngineSettings());
+    var e = new SetupEngine(Chicago());
     int idx = 0;
     double nf = 1000;
     Run(e, CalmDay(day1, i => G(5100, 5060, 4970, -1e9, nf -= 1), ref idx));   // Net Flow en baisse
@@ -130,7 +146,7 @@ List<Signal> Run(SetupEngine e, IEnumerable<BarInput> bars)
 
 // ================================================================ 4. Stop prioritaire si stop et objectif dans la meme barre
 {
-    var e = new SetupEngine(new EngineSettings());
+    var e = new SetupEngine(Chicago());
     int idx = 0;
     double nf = 0;
     Run(e, CalmDay(day1, i => G(5100, 5060, 4970, -1e9, nf += 1), ref idx));
@@ -147,7 +163,7 @@ List<Signal> Run(SetupEngine e, IEnumerable<BarInput> bars)
 
 // ================================================================ 5. Limite de trades par jour
 {
-    var e = new SetupEngine(new EngineSettings { MaxTradesPerDay = 1 });
+    var e = new SetupEngine(ChicagoLimited());
     int idx = 0;
     double nf = 0;
     Run(e, CalmDay(day1, i => G(5100, 5060, 4970, -1e9, nf += 1), ref idx));
@@ -163,7 +179,7 @@ List<Signal> Run(SetupEngine e, IEnumerable<BarInput> bars)
 
 // ================================================================ 6. Setup A : rejet du Major Gamma en long gamma
 {
-    var e = new SetupEngine(new EngineSettings());
+    var e = new SetupEngine(Chicago());
     int idx = 0;
     double nf = 0;
     Run(e, CalmDay(day1, i => G(4900, 5020, 4970, 1e9, nf += 1), ref idx));
@@ -201,7 +217,7 @@ List<Signal> Run(SetupEngine e, IEnumerable<BarInput> bars)
 
 // ================================================================ 7. Setup C : aimant de fin de seance, et FLAT a 14:45
 {
-    var e = new SetupEngine(new EngineSettings());
+    var e = new SetupEngine(Chicago());
     int idx = 0;
     double nf = 0;
     Run(e, CalmDay(day1, i => G(4900, 5000, 4950, 1e9, nf += 1), ref idx));
@@ -225,7 +241,7 @@ List<Signal> Run(SetupEngine e, IEnumerable<BarInput> bars)
 
 // ================================================================ 8. Pas d'entree les 5 premieres minutes ni hors seance
 {
-    var e = new SetupEngine(new EngineSettings());
+    var e = new SetupEngine(Chicago());
     int idx = 0;
     double nf = 0;
     Run(e, CalmDay(day1, i => G(5100, 5060, 4970, -1e9, nf += 1), ref idx));
@@ -234,6 +250,37 @@ List<Signal> Run(SetupEngine e, IEnumerable<BarInput> bars)
     bars.Add(Bar(day2, 511, 5009, 5030, 5009, 5025, 900, G(5100, 5060, 4970, -1e9, nf += 1), ref idx));   // 08:31 : casse la veille
     Run(e, bars);
     Check("Filtres : aucun signal hors seance ni dans les 5 premieres minutes", e.Signals.Count == 0, e.Signals.Count + " signal(s)");
+}
+
+// ================================================================ 9. Heure de New York (reglage par defaut)
+// Meme cassure que le scenario 2, horodatee a New York : meme signal, une heure plus tard sur l'horloge.
+// Les barres a l'heure de Chicago lues avec les reglages de New York ne donnent pas ce signal (09:10 = avant 09:30).
+{
+    SetupEngine RunB(EngineSettings st, int shift)
+    {
+        var e = new SetupEngine(st);
+        int idx = 0;
+        double nf = 0;
+        foreach (var b in CalmDay(day1, i => G(5100, 5060, 4970, -1e9, nf += 1), ref idx)) { b.Time = b.Time.AddMinutes(shift); e.OnBar(b); }
+        var bars = new List<BarInput>();
+        for (int m = 0; m < 30; m++) bars.Add(Bar(day2, 510 + shift + m, 5002, 5004, 5000, 5002, 10, G(5100, 5060, 4970, -1e9, nf += 1), ref idx));
+        for (int m = 30; m < 40; m++) bars.Add(Bar(day2, 510 + shift + m, 5002, 5003, 5001, 5002, 10, G(5100, 5060, 4970, -1e9, nf += 1), ref idx));
+        bars.Add(Bar(day2, 550 + shift, 5003, 5007, 5003, 5006, 600, G(5100, 5060, 4970, -1e9, nf += 1), ref idx));
+        bars.Add(Bar(day2, 551 + shift, 5006.5, 5010, 5006, 5009, 50, G(5100, 5060, 4970, -1e9, nf += 1), ref idx));
+        bars.Add(Bar(day2, 552 + shift, 5009, 5014, 5008, 5013, 50, G(5100, 5060, 4970, -1e9, nf += 1), ref idx));
+        bars.Add(Bar(day2, 553 + shift, 5013, 5021, 5012, 5020.5, 50, G(5100, 5060, 4970, -1e9, nf += 1), ref idx));
+        Run(e, bars);
+        return e;
+    }
+    var ny = RunB(new EngineSettings(), 60);
+    var s = ny.Signals.FirstOrDefault();
+    Check("New York : seance 09:30-16:00, aimant des 14:00, FLAT 15:45", new EngineSettings().SessionText() == "09:30-16:00, aimant des 14:00, FLAT 15:45",
+        new EngineSettings().SessionText());
+    Check("New York : meme signal B a 10:10, meme resultat +52 ticks", s != null && s.Time.Hour == 10 && s.Time.Minute == 10 && s.Level == 5004 && s.ResultTicks == 52,
+        s == null ? "aucun signal" : s.Time.ToString("HH:mm") + " " + s.Level + " " + s.ResultTicks);
+    var wrong = RunB(new EngineSettings(), 0);
+    Check("Barres de Chicago lues a l'heure de New York : pas de signal a 09:10", !wrong.Signals.Any(x => x.Time.Hour == 9 && x.Time.Minute == 10),
+        string.Join(", ", wrong.Signals.Select(x => x.Time.ToString("HH:mm"))));
 }
 
 Console.WriteLine(failures == 0 ? "\nTous les controles sont OK." : "\n" + failures + " controle(s) en echec.");
