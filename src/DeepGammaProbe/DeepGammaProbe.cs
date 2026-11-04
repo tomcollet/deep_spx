@@ -52,7 +52,7 @@ namespace DeepSpx.Probe
     public class DeepGammaProbe : VolSysAPI.Indicators.Indicator
     {
         public const string Prefix = "DSPX;";
-        public const string Version = "4";
+        public const string Version = "4.1";
 
         public static IndicatorDescriptionBase Register() =>
             new IndicatorDescriptionBase
@@ -76,7 +76,7 @@ namespace DeepSpx.Probe
         public int RtStatsMinutes { get; set; } = 60;
         /// Panneau de texte sur le graphique : position (0 a 1), taille de police, nombre de series affichees.
         public double PanelX { get; set; } = 0.01;
-        public double PanelY { get; set; } = 0.97;
+        public double PanelY { get; set; } = 0.03;   // coordonnees relatives : 0 = haut du graphique (vu le 04/11/2026)
         public double PanelLineStep { get; set; } = 0.028;
         public int PanelFontSize { get; set; } = 11;
         public int PanelMaxSeries { get; set; } = 14;
@@ -523,7 +523,7 @@ namespace DeepSpx.Probe
                     a.CoordinateXType = CoordinateTypeEnum.Relative;
                     a.CoordinateYType = CoordinateTypeEnum.Relative;
                     a.X = PanelX;
-                    a.Y = PanelY - i * PanelLineStep;
+                    a.Y = PanelY + i * PanelLineStep;
                     a.FontSize = PanelFontSize;
                     a.FontBold = i == 0;
                     a.Text = i == 0 ? "Probe DeepGamma v" + Version + " : chargement de l'historique..." : "";
