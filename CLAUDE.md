@@ -72,9 +72,8 @@ travail : **français** (docs, commentaires, messages de commit).
 
 ## Prochaine action
 
-1. Tom pose l'indicateur de setups (v1.3, compilé chez lui le 04/11 à 19h25). Vérifier `DSPX;CLOCK` (New York attendu) et que le Zero Gamma du panneau tombe sur la ligne DeepGamma
-   (niveaux a priori déjà en prix ES : `ApplyOptionOffset` désactivé). Remettre Option Summary et Option Net Flow sur le
-   graphique.
+1. Fait le 04/11 : indicateur de setups posé, horloge New York détectée, repérage complet (envelopes 10, summary 12,
+   netflow 13, pressure 14), Zero Gamma du panneau = ligne tracée (niveaux en prix ES). Tom passe en v1.5 (ticks).
 2. Q7 (04/11, `docs/SDK_DEEPCHARTS.md`) : Envelopes et Net Flow lisibles en live ; Summary et MM Pressure remplis avec
    3 minutes de retard, mesuré par les lignes `DSPX;LAG` (lus avec `SummaryLagBars` = 5).
 3. Test C (Deep Replay), lignes capturées par `tools/read_log_window.py --follow`.

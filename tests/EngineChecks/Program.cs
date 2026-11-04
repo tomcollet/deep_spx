@@ -302,5 +302,29 @@ List<Signal> Run(SetupEngine e, IEnumerable<BarInput> bars)
     Check("Net Flow a 0 depuis 60 barres -> plus de pente (setup B impossible)", double.IsNaN(e.NetFlowSlope), e.NetFlowSlope.ToString());
 }
 
+// ================================================================ 11. Grille des ticks et gap au-dela du stop
+// Niveaux du 02/11/2026 vus sur le graphique de Tom : Minor Gamma 7600,35 (stop 7599,35), VWAP 7660,86.
+{
+    Check("Ticks : stop d'achat 7599,35 -> 7599,25", SetupEngine.RoundStop(Side.Long, 7599.35, 0.25) == 7599.25);
+    Check("Ticks : stop de vente 7631,05 -> 7631,25", SetupEngine.RoundStop(Side.Short, 7631.05, 0.25) == 7631.25);
+    Check("Ticks : objectif de vente 7660,86 -> 7660,75", SetupEngine.RoundTarget(Side.Short, 7660.86, 0.25) == 7660.75);
+    Check("Ticks : objectif d'achat 7641,40 -> 7641,50, 7641,50 inchange",
+        SetupEngine.RoundTarget(Side.Long, 7641.40, 0.25) == 7641.5 && SetupEngine.RoundTarget(Side.Long, 7641.5, 0.25) == 7641.5);
+
+    var e = new SetupEngine(Chicago());
+    int idx = 0;
+    double nf = 0;
+    Run(e, CalmDay(day1, i => G(5100, 5060, 4970, -1e9, nf += 1), ref idx));
+    var bars = new List<BarInput>();
+    for (int m = 0; m < 40; m++) bars.Add(Bar(day2, 510 + m, 5002, 5004, 5000, 5002, 10, G(5100, 5060, 4970, -1e9, nf += 1), ref idx));
+    bars.Add(Bar(day2, 550, 5003, 5007, 5003, 5006, 600, G(5100, 5060, 4970, -1e9, nf += 1), ref idx));      // signal, stop 5003
+    bars.Add(Bar(day2, 551, 5006.5, 5008, 5006, 5007, 50, G(5100, 5060, 4970, -1e9, nf += 1), ref idx));     // entree 5006,75
+    bars.Add(Bar(day2, 552, 4998, 4999, 4996, 4997, 50, G(5100, 5060, 4970, -1e9, nf += 1), ref idx));       // ouvre sous le stop
+    Run(e, bars);
+    var s = e.Signals.FirstOrDefault();
+    Check("Gap sous le stop : sortie a l'ouverture 4998 - 1 tick = 4997,75 (-36 ticks)", s != null && s.Exit == ExitReason.Stop && s.ExitPrice == 4997.75 && s.ResultTicks == -36,
+        s == null ? "aucun signal" : s.Exit + " " + s.ExitPrice + " " + s.ResultTicks);
+}
+
 Console.WriteLine(failures == 0 ? "\nTous les controles sont OK." : "\n" + failures + " controle(s) en echec.");
 return failures == 0 ? 0 : 1;

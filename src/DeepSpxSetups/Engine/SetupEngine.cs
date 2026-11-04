@@ -212,7 +212,12 @@ namespace DeepSpx.Engine
             bool targetHit = isLong ? bar.High >= p.Target : bar.Low <= p.Target;
             int timeStop = p.Kind == SetupKind.WallReject ? S.TimeStopBarsA : p.Kind == SetupKind.Continuation ? S.TimeStopBarsB : S.TimeStopBarsC;
 
-            if (stopHit) Close(p, bar, ExitReason.Stop, p.Stop - (int)p.Side * slip, tick);
+            if (stopHit)
+            {
+                // ouverture au-dela du stop (gap) : execution a l'ouverture, pas au stop
+                double basePrice = isLong ? Math.Min(p.Stop, bar.Open) : Math.Max(p.Stop, bar.Open);
+                Close(p, bar, ExitReason.Stop, basePrice - (int)p.Side * slip, tick);
+            }
             else if (targetHit) Close(p, bar, ExitReason.Target, p.Target - (int)p.Side * slip, tick);
             else if (!rth || minute >= S.ForcedExitMinute) Close(p, bar, ExitReason.SessionEnd, bar.Close - (int)p.Side * slip, tick);
             else if (held >= timeStop) Close(p, bar, ExitReason.Time, bar.Close - (int)p.Side * slip, tick);
@@ -416,9 +421,27 @@ namespace DeepSpx.Engine
         }
 
         // ------------------------------------------------------------ outils
-        private static Signal Make(SetupKind kind, Side side, string levelName, double level, double stop, double target)
+        /// Stops et objectifs sur la grille des ticks : les niveaux DeepGamma (strike + base ES - SPX) et la VWAP n'y sont
+        /// pas. Arrondi defavorable : stop un peu plus loin, objectif un peu plus loin aussi.
+        private Signal Make(SetupKind kind, Side side, string levelName, double level, double stop, double target)
         {
-            return new Signal { Kind = kind, Side = side, LevelName = levelName, Level = level, Stop = stop, Target = target };
+            double tick = S.TickSize;
+            return new Signal { Kind = kind, Side = side, LevelName = levelName, Level = level,
+                                Stop = RoundStop(side, stop, tick), Target = RoundTarget(side, target, tick) };
+        }
+
+        public static double RoundStop(Side side, double price, double tick)
+        {
+            if (!(tick > 0) || double.IsNaN(price)) return price;
+            double n = price / tick;
+            return Math.Round((side == Side.Long ? Math.Floor(n + 1e-7) : Math.Ceiling(n - 1e-7)) * tick, 6);
+        }
+
+        public static double RoundTarget(Side side, double price, double tick)
+        {
+            if (!(tick > 0) || double.IsNaN(price)) return price;
+            double n = price / tick;
+            return Math.Round((side == Side.Long ? Math.Ceiling(n - 1e-7) : Math.Floor(n + 1e-7)) * tick, 6);
         }
 
         private static void Consider(ref Signal best, Signal candidate)

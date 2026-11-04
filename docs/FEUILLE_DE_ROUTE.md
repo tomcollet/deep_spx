@@ -2,7 +2,7 @@
 
 | # | Étape | Livrable | Critère pour passer à la suite | État |
 |---|---|---|---|---|
-| 1 | Sonde (semaine 1) | `src/DeepGammaProbe` (v4.1, panneau sur le graphique) + `deepchart-api.txt` + verdicts des tests A, B et C | Les séries DeepGamma sont lisibles en replay (Q1, Q2). Sinon : achat OPRA et calcul maison | **En cours** : test A fait le 04/11/2026 (Q1, Q2, Q3, Q4, Q6 OUI ; Q8 : pas de carnet MBO mais identifiants d'ordres sur chaque trade). Restent le test B en séance US (Q7) et le test C en Deep Replay |
+| 1 | Sonde (semaine 1) | `src/DeepGammaProbe` (v4.1, panneau sur le graphique) + `deepchart-api.txt` + verdicts des tests A, B et C | Les séries DeepGamma sont lisibles en replay (Q1, Q2). Sinon : achat OPRA et calcul maison | **En cours** : tests A et B faits le 04/11/2026 (Q1 à Q4, Q6 OUI ; Q7 : Envelopes et Net Flow à jour en live, Summary et Pressure avec 3 minutes de retard ; Q8 : pas de MBO, identifiants d'ordres sur chaque trade). Reste le test C en Deep Replay |
 | 2 | Données (semaines 2-3) | `Engine/` C# pur + enregistreur dans la DLL ; replay des 9 mois ; une ligne par minute dans le log | Minutes reconstruites depuis les `.tdatac` = barres DeepCharts | À faire |
 | 3 | Faits connus (semaine 4) | Étude descriptive | Effets attendus retrouvés (vol réalisée vs GEX MM...) | À faire |
 | 4 | Setups (semaines 5-8) | Une étude par setup (PREREG, résultats) | Critères de [PROTOCOLE.md](PROTOCOLE.md) | **Avancé à la demande de Tom (04/11/2026)** : indicateur de setups v1 ([SETUPS.md](SETUPS.md)) avec les seuils de départ, non réglés. Les études restent à faire |

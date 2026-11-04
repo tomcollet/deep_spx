@@ -1,4 +1,4 @@
-# Indicateur de setups (v1.4)
+# Indicateur de setups (v1.5)
 
 `src/DeepSpxSetups` : indicateur DeepCharts **« DeepSpx - Setups gamma x order flow »**. Il signale des achats et des
 ventes selon les trois setups de [STRATEGIE.md](STRATEGIE.md), dessine les signaux et leur résultat simulé, et
@@ -83,7 +83,10 @@ FLAT de tout à 15:45 ; une position à la fois ; 3 signaux par jour au plus ; a
 
 - Signal à la clôture d'une barre → entrée à **l'ouverture de la barre suivante**, + 1 tick contre soi.
 - Sorties : stop, objectif, temps ou fin de séance, toutes − 1 tick contre soi. **Stop et objectif touchés dans la même
-  barre → stop.**
+  barre → stop.** Barre qui ouvre au-delà du stop (gap) : sortie à l'ouverture, pas au stop.
+- **Stops et objectifs sur la grille des ticks** : les niveaux DeepGamma (strike + base ES - SPX, par exemple 7600,35)
+  et la VWAP n'y sont pas. Arrondi défavorable : stop au tick suivant vers l'extérieur, objectif au tick qui demande au
+  prix d'aller un peu plus loin.
 - Résultat en ticks, affiché à la sortie (« +52 t ») et dans le panneau.
 
 ## Substitutions par rapport à STRATEGIE.md
@@ -136,8 +139,8 @@ dotnet run --project tests/SetupsHarness    # faux graphique : horloge Chicago e
 
 - **Niveaux en prix ES** : Major 7739,175 et Minor 7679,175 (écart de 60 points, mêmes décimales qui varient dans la
   journée : 7729,325 une heure plus tôt). Ce sont des strikes SPX décalés de la base ES - SPX : DeepGamma convertit
-  déjà ses niveaux en prix ES. `ApplyOptionOffset` reste désactivé (à confirmer : le Zero Gamma du panneau doit tomber
-  sur la ligne tracée).
+  déjà ses niveaux en prix ES. **Confirmé par Tom à 19h58 : le Zero Gamma du panneau tombe sur la ligne tracée.**
+  `ApplyOptionOffset` reste désactivé.
 - **Historique DeepGamma** : depuis le 20/10/2026 sur ce graphique (14 900 barres de 1 minute). Tout est dans la
   période scellée : les études demanderont des séances plus anciennes (Deep Replay ou historique plus long).
 - **Ce graphique-là** n'avait ni Option Summary ni Option Net Flow ni Market Maker Pressure : à remettre pour les
@@ -145,7 +148,7 @@ dotnet run --project tests/SetupsHarness    # faux graphique : horloge Chicago e
 
 ## À vérifier
 
-1. **Zero Gamma du panneau = ligne Zero Gamma tracée par DeepGamma.**
+1. ~~Zero Gamma du panneau = ligne Zero Gamma tracée par DeepGamma.~~ Confirmé le 04/11/2026.
 2. **DeepGamma en live** (issue #4) : si le panneau passe en « régime inconnu, DeepGamma figé » ou « trop ancien »
    pendant la séance US, la lecture live est bloquée et l'indicateur ne signale rien, comme prévu.
 3. **Summary toujours négatif** sur les séances lues le 04/11/2026 : le régime sera surtout short gamma, donc surtout des
