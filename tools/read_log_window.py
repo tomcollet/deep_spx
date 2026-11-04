@@ -117,7 +117,10 @@ def main() -> int:
         return 0
 
     seen = set()
+    if args.out:
+        args.out.parent.mkdir(parents=True, exist_ok=True)   # data\ n'existe pas dans un clone neuf
     out = args.out.open("a", encoding="utf-8") if args.out else None
+    first = True
     try:
         while True:
             rows = read_rows(win, args.max_depth, args.max_rows)
@@ -137,7 +140,12 @@ def main() -> int:
                 if not rows:
                     print("Aucune ligne lue : lance --dump et envoie le resultat.", file=sys.stderr)
                 return 0
-            if new:
+            if first:
+                first = False
+                print(f"{len(rows)} lignes {PREFIX} visibles au demarrage" + (f", ecrites dans {args.out}" if out else "") +
+                      ("" if rows else " : aucune ligne lue, lance --dump et envoie le resultat") + ". Ctrl+C pour arreter.",
+                      file=sys.stderr)
+            elif new:
                 print(f"{time.strftime('%H:%M:%S')}  +{len(new)} lignes", file=sys.stderr)
             time.sleep(args.interval)
     except KeyboardInterrupt:
