@@ -19,6 +19,15 @@ EngineSettings Chicago()
     return st;
 }
 
+// Sans la regle de risque de Tom (25 ticks, 1,5R) : pour tester la mecanique d'un setup seule
+EngineSettings ChicagoNoRiskRule()
+{
+    var st = Chicago();
+    st.MaxRiskTicks = 100000;
+    st.MinRewardRisk = 0;
+    return st;
+}
+
 EngineSettings ChicagoLimited()
 {
     var st = Chicago();
@@ -218,8 +227,12 @@ List<Signal> Run(SetupEngine e, IEnumerable<BarInput> bars)
 }
 
 // ================================================================ 7. Setup C : aimant de fin de seance, et FLAT a 14:45
+// Mecanique testee sans la regle de risque : avec un stop a 1 ATR5 au-dela de l'extreme et le strike pour objectif, ce
+// signal depasse 25 ticks de risque et n'atteint pas 1,5R.
+for (int pass = 0; pass < 2; pass++)
 {
-    var e = new SetupEngine(Chicago());
+    bool withRule = pass == 1;
+    var e = new SetupEngine(withRule ? Chicago() : ChicagoNoRiskRule());
     int idx = 0;
     double nf = 0;
     Run(e, CalmDay(day1, i => G(4900, 5000, 4950, 1e9, nf += 1), ref idx));
@@ -233,6 +246,12 @@ List<Signal> Run(SetupEngine e, IEnumerable<BarInput> bars)
         bars.Add(Bar(day2, 510 + m, 5004, 5005, 5003, 5004, 10, G(4900, 5000, 4950, 1e9, nf += 1), ref idx));   // ne revient pas
     Run(e, bars);
     var s = e.Signals.FirstOrDefault(x => x.Kind == SetupKind.Pin);
+    if (withRule)
+    {
+        Check("Regle de risque : le meme signal C est refuse (risque > 25 ticks ou objectif < 1,5R)", s == null && e.RejectedRisk + e.RejectedReward >= 1,
+            s == null ? "risque " + e.RejectedRisk + ", objectif " + e.RejectedReward : "signal accepte");
+        continue;
+    }
     Check("C : vente vers le strike aimant (Major Gamma 5000)", s != null && s.Side == Side.Short && s.Target == 5000 && s.BarIndex == signalIndex,
         s == null ? "aucun signal C (" + e.Blocked + ", regime " + e.Regime + ")" : s.Side + " objectif " + s.Target + " barre " + s.BarIndex);
     if (s != null)
@@ -324,6 +343,91 @@ List<Signal> Run(SetupEngine e, IEnumerable<BarInput> bars)
     var s = e.Signals.FirstOrDefault();
     Check("Gap sous le stop : sortie a l'ouverture 4998 - 1 tick = 4997,75 (-36 ticks)", s != null && s.Exit == ExitReason.Stop && s.ExitPrice == 4997.75 && s.ResultTicks == -36,
         s == null ? "aucun signal" : s.Exit + " " + s.ExitPrice + " " + s.ResultTicks);
+}
+
+// ================================================================ 12. Etude des scalps (ScalpStudy) sur un marche synthetique
+// 50 seances de fevrier a avril 2026, a l'heure de New York, plus 5 seances a partir du 05/11 (test final, a exclure).
+// Seances paires en short gamma (prix sous le Zero Gamma, Summary negatif), impaires en long gamma.
+// Toutes les 30 minutes (xx:10 et xx:40) : delta extreme, puis 6 barres de 6 ticks dans le sens du delta en short gamma,
+// contre lui en long gamma. A xx:25 et xx:55 : saut de Net Flow, puis 6 barres dans son sens, quel que soit le regime.
+// Attendu : H1 regime et H2 Net Flow gagnent a chaque fois (+23 ticks), leurs controles autour de la moitie.
+{
+    var st = new EngineSettings();                        // New York
+    var engine = new SetupEngine(st);
+    var study = new ScalpStudy(st, new ScalpSettings());
+    int idx = 0;
+    double price = 5000, nf = 0;
+    var days = new List<DateTime>();
+    for (var d = new DateTime(2026, 2, 2); days.Count < 50; d = d.AddDays(1))
+        if (d.DayOfWeek != DayOfWeek.Saturday && d.DayOfWeek != DayOfWeek.Sunday) days.Add(d);
+    for (var d = new DateTime(2026, 11, 5); days.Count < 55; d = d.AddDays(1))
+        if (d.DayOfWeek != DayOfWeek.Saturday && d.DayOfWeek != DayOfWeek.Sunday) days.Add(d);
+    for (int k = 0; k < days.Count; k++)
+    {
+        bool shortGamma = k % 2 == 0;
+        int drift = 0, driftLeft = 0, flip = 1;
+        for (int m = 0; m < 390; m++)
+        {
+            int minuteOfDay = 9 * 60 + 30 + m;
+            double open = price;
+            double move = driftLeft > 0 ? drift * 1.5 : 0;   // 6 ticks par barre pendant la derive
+            if (driftLeft > 0) driftLeft--;
+            double close = open + move;
+            long delta = (m % 2 == 0) ? 10 : -10;
+            double dnf = (m % 2 == 0) ? 10 : -10;
+            int mm = m % 30;
+            if (mm == 10 && m >= 10)                         // evenement H1
+            {
+                flip = -flip;
+                delta = 800L * flip;
+                drift = shortGamma ? flip : -flip;
+                driftLeft = 6;
+            }
+            else if (mm == 25)                               // evenement H2
+            {
+                flip = -flip;
+                dnf = 1e6 * flip;
+                drift = flip;
+                driftLeft = 6;
+            }
+            nf += dnf;
+            price = close;
+            var b = new BarInput
+            {
+                Index = idx++, Time = days[k].AddMinutes(minuteOfDay), Open = open, Close = close,
+                High = Math.Max(open, close) + 0.25, Low = Math.Min(open, close) - 0.25,
+                Volume = 400 + Math.Abs(delta), AskVolume = 200 + Math.Max(0, delta), BidVolume = 200 + Math.Max(0, -delta),
+                Gamma = new GammaInput
+                {
+                    ZeroGamma = (shortGamma ? price + 100 : price - 100) + idx * 0.001, MajorGamma = price + 300, MinorGamma = price - 300,
+                    SummaryRegime = (shortGamma ? -1e9 : 1e9) + idx, NetFlow = nf, MmPressure = 1
+                }
+            };
+            engine.OnBar(b);
+            study.OnBar(b, engine);
+        }
+    }
+    var h1 = study.Result(study.Find(ScalpRule.H1Regime, 16), 0);
+    var h1f = study.Result(study.Find(ScalpRule.H1Follow, 16), 0);
+    var h1r = study.Result(study.Find(ScalpRule.H1Random, 16), 0);
+    var h2 = study.Result(study.Find(ScalpRule.H2NetFlow, 16), 0);
+    var h2r = study.Result(study.Find(ScalpRule.H2Random, 16), 0);
+    var h1d = study.Result(study.Find(ScalpRule.H1Regime, 16), 1);
+    var h1v = study.Result(study.Find(ScalpRule.H1Regime, 16), 2);
+    Check("Etude : 50 seances jusqu'au 04/11, les 5 seances du test final (a partir du 05/11) exclues", study.SessionDates.Count == 50, study.SessionDates.Count.ToString());
+    Check("Etude : decouverte 30 seances, validation 20", h1d.Sessions == 30 && h1v.Sessions == 20, h1d.Sessions + "/" + h1v.Sessions);
+    Check("Etude : H1 regime gagne a chaque fois, +23 ticks (objectif 24 - 1 tick)", h1.Trades > 100 && h1.Wins == h1.Trades && Math.Abs(h1.AvgTicks - 23) < 1e-6,
+        h1.Trades + " trades, " + h1.Wins + " gagnants, " + h1.AvgTicks);
+    Check("Etude : seuil de rentabilite a 1,5R = 42,5 % (stop 16 + 1 tick sur 40)", Math.Abs(h1.BreakEvenPct - 42.5) < 1e-9, h1.BreakEvenPct.ToString());
+    Check("Etude : intervalle de confiance calcule et autour de +23", h1.CiLow <= 23 && h1.CiHigh >= 23, h1.CiLow + " / " + h1.CiHigh);
+    Check("Etude : H1 toujours suivie autour de la moitie (le regime fait la difference)", h1f.WinPct > 35 && h1f.WinPct < 65, h1f.WinPct.ToString("0.0"));
+    Check("Etude : H1 hasard autour de la moitie", h1r.WinPct > 30 && h1r.WinPct < 70, h1r.WinPct.ToString("0.0"));
+    Check("Etude : H2 Net Flow gagne a chaque fois", h2.Trades > 100 && h2.Wins == h2.Trades, h2.Trades + " trades, " + h2.Wins + " gagnants");
+    Check("Etude : H2 hasard autour de la moitie", h2r.WinPct > 30 && h2r.WinPct < 70, h2r.WinPct.ToString("0.0"));
+    Check("Etude : aucun stop au-dela de 25 ticks, objectifs a 1,5R", study.Accounts.All(a => a.StopTicks <= 25 && a.TargetTicks == (int)Math.Round(a.StopTicks * 1.5)));
+    var h1slip = study.Result(study.Find(ScalpRule.H1Regime, 16, 2), 0);
+    Check("Etude : robustesse a 2 ticks par execution, H1 regime a +22 ticks (objectif 24 - 2)", h1slip.Trades > 100 && Math.Abs(h1slip.AvgTicks - 22) < 1e-6 &&
+        Math.Abs(h1slip.BreakEvenPct - 45) < 1e-9, h1slip.Trades + " trades, " + h1slip.AvgTicks + ", seuil " + h1slip.BreakEvenPct);
 }
 
 Console.WriteLine(failures == 0 ? "\nTous les controles sont OK." : "\n" + failures + " controle(s) en echec.");

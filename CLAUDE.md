@@ -29,7 +29,11 @@ travail : **français** (docs, commentaires, messages de commit).
 - **Ticks `.tdatac` comme référence** des trades ; minutes reconstruites depuis les ticks ; exports minutes DeepCharts
   uniquement pour le contrôle.
 - **Holdout scellé : séances à partir du 16/08/2026** (même coupure que le banc Ticks/lab). Ne jamais l'ouvrir pour
-  explorer.
+  explorer. **Exception décidée par Tom le 04/11/2026 : ouvert pour l'étude des scalps seulement** (60 jours chargés
+  sur le graphique, jusqu'au 04/11 inclus) ; le test final des scalps = séances live à partir du 05/11/2026, jamais dans
+  l'étude (`StudyEndDate` = 20261105). A/B/C gardent le holdout du 16/08.
+- **Règle de risque de Tom (04/11/2026)** : jamais plus de 25 ticks de risque, objectif d'au moins 1,5R. Appliquée à
+  tous les setups (signal refusé, pas ajusté) et aux scalps (brackets à 1,5R).
 - **Exécution simulée** (bid/ask du tick suivant + 1 tick, robustesse à 2 ticks) jusqu'à la validation.
 - **Le pupitre copy trade est la dernière étape.** Ne pas l'intégrer avant que Tom le demande. Ses règles : BUY/SELL en
   tout-ou-rien, FLAT jamais bloqué, rien n'écoute ailleurs que sur 127.0.0.1.
@@ -77,5 +81,7 @@ travail : **français** (docs, commentaires, messages de commit).
 2. Q7 (04/11, `docs/SDK_DEEPCHARTS.md`) : Envelopes et Net Flow lisibles en live ; Summary et MM Pressure remplis avec
    3 minutes de retard, mesuré par les lignes `DSPX;LAG` (lus avec `SummaryLagBars` = 5).
 3. Test C (Deep Replay), lignes capturées par `tools/read_log_window.py --follow`.
-4. Ensuite : enregistreur par minute (étape 2) et backtest C# en ligne de commande réutilisant `Engine/`, puis une étude
-   préenregistrée par setup sur les séances d'avant le 16/08/2026.
+4. Étude des scalps (`research/scalp_flux/PREREG.md`, v1.6) : Tom charge 60 jours sur le graphique et envoie les
+   lignes `DSPX;STUDYINFO` / `DSPX;STUDY`. Décider d'après les critères du PREREG, sans rien régler.
+5. Ensuite : enregistreur par minute (étape 2) et backtest C# en ligne de commande réutilisant `Engine/`, puis une étude
+   préenregistrée par setup A/B/C sur les séances d'avant le 16/08/2026.

@@ -32,7 +32,7 @@ namespace DeepSpx.Setups
     public class SetupsIndicator : VolSysAPI.Indicators.Indicator
     {
         public const string Prefix = "DSPX;";
-        public const string Version = "1.5";
+        public const string Version = "1.6";
 
         public static IndicatorDescriptionBase Register() =>
             new IndicatorDescriptionBase
@@ -51,6 +51,16 @@ namespace DeepSpx.Setups
         public int MaxTradesPerDay { get; set; } = 3;
         public int MaxLossesPerDay { get; set; } = 2;
         public double SlippageTicks { get; set; } = 1;
+        /// Regle de risque de Tom : jamais plus de 25 ticks de risque, objectif d'au moins 1,5 fois le risque.
+        public int MaxRiskTicks { get; set; } = 25;
+        public double MinRewardRisk { get; set; } = 1.5;
+        /// Etude des scalps (research/scalp_flux/PREREG.md) sur l'historique charge, affichee dans le panneau.
+        public bool ShowStudy { get; set; } = true;
+        /// Seances etudiees : de StudyStartDate (inclus, 0 = debut de l'historique) a StudyEndDate (exclu), au format
+        /// AAAAMMJJ. Decision de Tom du 04/11/2026 : holdout ouvert pour les scalps, recherche et validation jusqu'au
+        /// 04/11 inclus ; les seances live a partir du 05/11 sont le test final et ne doivent pas entrer dans l'etude.
+        public int StudyStartDate { get; set; } = 0;
+        public int StudyEndDate { get; set; } = 20261105;
         /// Ajoute OptionOffsetPrice de la barre aux niveaux DeepGamma (si les niveaux sont en prix SPX et non ES)
         public bool ApplyOptionOffset { get; set; } = false;
         /// Numeros forces des indicateurs DeepGamma (-1 : reperage automatique par le nom)
@@ -81,6 +91,9 @@ namespace DeepSpx.Setups
         // ------------------------------------------------------------ etat
         private static readonly CultureInfo IC = CultureInfo.InvariantCulture;
         private SetupEngine _engine;
+        private ScalpStudy _study;
+        private List<string> _studyLines;
+        private int _studyCount = -1;
         private bool _historyDone;
         private int _lastProcessed;
         private long _endRt;
@@ -93,7 +106,7 @@ namespace DeepSpx.Setups
         private string _clockText = "";
         private int _rtCloses;
 
-        private const int PanelLines = 18;
+        private const int PanelLines = 28;
 
         // ------------------------------------------------------------ cycle de vie
         public override void OnSet(bool setDefault, bool themeOverride)
@@ -129,11 +142,15 @@ namespace DeepSpx.Setups
                     _tick = DetectTick();
                     DetectClock();
                     _engine = new SetupEngine(BuildSettings());
+                    _study = new ScalpStudy(_engine.Settings, BuildStudySettings());
+                    _studyLines = null;
                     MapGamma();
                     int last = VAn.BarIndex - 1;              // la derniere barre est encore ouverte
                     for (int b = 0; b <= last; b++) Process(b);
                     Log("HIST", new[] { "bars=" + (last + 1), "signals=" + _engine.Signals.Count, "map=" + _mapText,
-                        "clock=" + (_chicago ? "Chicago" : "NewYork"), "session=" + _engine.Settings.SessionText() });
+                        "clock=" + (_chicago ? "Chicago" : "NewYork"), "session=" + _engine.Settings.SessionText(),
+                        "refuses_risque=" + _engine.RejectedRisk, "refuses_objectif=" + _engine.RejectedReward });
+                    LogStudy();
                     UpdatePanel();
                     return;
                 }
@@ -160,6 +177,7 @@ namespace DeepSpx.Setups
                     Process(b);
                     LogLag(b);
                     if (_rtCloses % 5 == 1) LogState(b);     // etat repete : le fichier lu par read_log_window.py le contient toujours
+                    if (_rtCloses % 60 == 1) LogStudy();
                     UpdatePanel();
                 }
             }
@@ -179,11 +197,30 @@ namespace DeepSpx.Setups
                 UseSummarySign = UseSummarySign,
                 BlockOnStaleGamma = BlockOnStaleGamma,
                 MaxTradesPerDay = MaxTradesPerDay,
+                MaxRiskTicks = MaxRiskTicks,
+                MinRewardRisk = MinRewardRisk,
                 MaxLossesPerDay = MaxLossesPerDay,
                 SlippageTicks = SlippageTicks
             };
             if (_chicago) s.ShiftClock(-60);
             return s;
+        }
+
+        private ScalpSettings BuildStudySettings()
+        {
+            return new ScalpSettings
+            {
+                StudyStart = ToDate(StudyStartDate, DateTime.MinValue),
+                StudyEnd = ToDate(StudyEndDate, ScalpSettings.ForwardTestStart),
+                RewardRisk = MinRewardRisk
+            };
+        }
+
+        private static DateTime ToDate(int yyyymmdd, DateTime fallback)
+        {
+            if (yyyymmdd <= 0) return fallback;
+            try { return new DateTime(yyyymmdd / 10000, yyyymmdd / 100 % 100, yyyymmdd % 100); }
+            catch { return fallback; }
         }
 
         /// Les heures de seance du moteur suivent l'heure des barres. Repere : l'heure de la premiere barre apres une
@@ -256,6 +293,7 @@ namespace DeepSpx.Setups
             }
             ReadGamma(b, bar, input.Gamma);
             _engine.OnBar(input);
+            if (_study != null) _study.OnBar(input, _engine);
             _lastProcessed = b;
 
             foreach (var s in _engine.NewExits) OnExit(s);
@@ -491,6 +529,16 @@ namespace DeepSpx.Setups
                     lines.Add("Simulation (indicative, ne pas regler dessus) : " + StatText("tous", e.StatsAll));
                     lines.Add("  " + StatText("A", e.StatsA) + "  |  " + StatText("B", e.StatsB) + "  |  " + StatText("C", e.StatsC));
                 }
+                if (e.RejectedRisk + e.RejectedReward > 0)
+                    lines.Add("Refuses par la regle de risque (" + MaxRiskTicks + " ticks, " + MinRewardRisk.ToString("0.0#", IC) + "R) : " +
+                              e.RejectedRisk + " pour le risque, " + e.RejectedReward + " pour l'objectif");
+                if (ShowStudy && _study != null)
+                {
+                    int count = _study.SessionDates.Count;
+                    foreach (var a in _study.Accounts) count += a.Trades.Count;
+                    if (_studyLines == null || count != _studyCount) { _studyLines = StudyLines(); _studyCount = count; }
+                    lines.AddRange(_studyLines);
+                }
                 lines.Add("Derniers signaux :");
                 int shown = 0;
                 for (int i = e.Signals.Count - 1; i >= 0 && shown < 5; i--, shown++)
@@ -503,6 +551,71 @@ namespace DeepSpx.Setups
             }
             catch { }
         }
+
+        // ------------------------------------------------------------ etude des scalps
+        private static readonly ScalpRule[] PanelRules =
+            { ScalpRule.H1Regime, ScalpRule.H1Follow, ScalpRule.H1Fade, ScalpRule.H1Random, ScalpRule.H2NetFlow, ScalpRule.H2Pure, ScalpRule.H2Random };
+
+        private List<string> StudyLines()
+        {
+            var st = _study;
+            var ps = st.Settings;
+            var lines = new List<string>();
+            int n = st.SessionDates.Count;
+            // Au-dela du 05/11/2026, l'etude mange le test final : le panneau le crie
+            bool eatsTest = ps.StudyEnd > ScalpSettings.ForwardTestStart;
+            string range = "avant le " + ps.StudyEnd.ToString("dd/MM/yyyy", IC) + (eatsTest ? ", TEST FINAL ENTAME" : ", test final a partir du 05/11 exclu");
+            if (n == 0)
+            {
+                lines.Add("Etude scalps : aucune seance avec DeepGamma avant le " + ps.StudyEnd.ToString("dd/MM/yyyy", IC) + " dans l'historique charge");
+                return lines;
+            }
+            lines.Add("Etude scalps (stop " + ps.PrimaryStopTicks + " / objectif " + Math.Round(ps.PrimaryStopTicks * ps.RewardRisk) + " ticks, sortie " +
+                      ps.TimeStopBars + " min) : " + n + " seances du " + st.SessionDates[0].ToString("dd/MM", IC) + " au " +
+                      st.SessionDates[n - 1].ToString("dd/MM/yyyy", IC) + " (" + range + ")" + (n < 40 ? "  |  MOINS DE 40 SEANCES : non concluant" : ""));
+            foreach (var rule in PanelRules)
+            {
+                var a = st.Find(rule, ps.PrimaryStopTicks);
+                if (a == null) continue;
+                var all = st.Result(a, 0);
+                var d = st.Result(a, 1);
+                var v = st.Result(a, 2);
+                lines.Add("  " + ScalpStudy.RuleText(rule) + " : " + all.Trades + " trades, " + Pct(all.WinPct) + " (seuil " + Pct(all.BreakEvenPct) +
+                          "), " + Ticks(all.AvgTicks) + " t/trade, IC " + Ticks(all.CiLow) + " a " + Ticks(all.CiHigh) + "  |  decouv. " + Ticks(d.AvgTicks) +
+                          " (" + d.Trades + "), valid. " + Ticks(v.AvgTicks) + " (" + v.Trades + ")");
+            }
+            var r1 = st.Find(ScalpRule.H1Regime, ps.PrimaryStopTicks, 2);
+            var r2 = st.Find(ScalpRule.H2NetFlow, ps.PrimaryStopTicks, 2);
+            if (r1 != null && r2 != null)
+                lines.Add("  Robustesse, 2 ticks par execution : H1 regime " + Ticks(st.Result(r1, 0).AvgTicks) + " t/trade, H2 Net Flow " +
+                          Ticks(st.Result(r2, 0).AvgTicks) + " t/trade");
+            return lines;
+        }
+
+        private void LogStudy()
+        {
+            if (_study == null) return;
+            var st = _study;
+            int n = st.SessionDates.Count;
+            Log("STUDYINFO", new[] { "sessions=" + n, "first=" + (n > 0 ? st.SessionDates[0].ToString("yyyy-MM-dd", IC) : "-"),
+                "last=" + (n > 0 ? st.SessionDates[n - 1].ToString("yyyy-MM-dd", IC) : "-"), "discovery_sessions=" + st.DiscoverySessions,
+                "end_exclusive=" + st.Settings.StudyEnd.ToString("yyyy-MM-dd", IC), "events_h1=" + st.EventsH1, "events_h2=" + st.EventsH2 });
+            foreach (var a in st.Accounts)
+            {
+                var all = st.Result(a, 0);
+                var d = st.Result(a, 1);
+                var v = st.Result(a, 2);
+                Log("STUDY", new[] { ScalpStudy.RuleText(a.Rule), "SL" + a.StopTicks, "TP" + a.TargetTicks,
+                    "glissement=" + a.SlipTicks.ToString("0.#", IC), "trades=" + all.Trades,
+                    "win=" + Pct(all.WinPct), "seuil=" + Pct(all.BreakEvenPct), "avg=" + Ticks(all.AvgTicks),
+                    "ci95=" + Ticks(all.CiLow) + "/" + Ticks(all.CiHigh), "decouverte=" + Ticks(d.AvgTicks) + "(" + d.Trades + ")",
+                    "validation=" + Ticks(v.AvgTicks) + "(" + v.Trades + ")" });
+            }
+        }
+
+        private static string Pct(double v) => double.IsNaN(v) ? "-" : v.ToString("0.0", IC) + " %";
+
+        private static string Ticks(double v) => double.IsNaN(v) ? "-" : v.ToString("+0.0;-0.0;0.0", IC);
 
         /// Indicateurs DeepGamma absents du graphique, et ce que cela coupe.
         private string MissingText()

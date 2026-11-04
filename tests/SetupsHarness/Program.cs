@@ -25,9 +25,14 @@ foreach (var (shift, clock) in new[] { (0, "Chicago"), (60, "NewYork") })
     van.Hidden.Add(15);
     RunChart(van, 60, "NewYork");
 }
+// Etude arretee au 14/10 (StudyEndDate = 20261014) : seule la seance du 13/10 compte.
+{
+    var van = new FakeVAn();
+    RunChart(van, 60, "NewYork", 20261014);
+}
 return allOk ? 0 : 1;
 
-void RunChart(FakeVAn van, int shift, string clock)
+void RunChart(FakeVAn van, int shift, string clock, int studyEnd = 0)
 {
     bool complete = van.Hidden.Count == 0;
     var day1 = new DateTime(2026, 10, 13);
@@ -51,6 +56,7 @@ void RunChart(FakeVAn van, int shift, string clock)
     Add(day2.AddMinutes(551), 5006.5, 5010, 5006, 5009, 250, 200);   // barre encore ouverte a la fin de l'historique
 
     var ind = new SetupsIndicator();
+    if (studyEnd > 0) ind.StudyEndDate = studyEnd;
     typeof(VolSysAPI.Indicators.Indicator).GetField("<VAn>k__BackingField", BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(ind, van);
     typeof(VolSysAPI.Indicators.Indicator).GetField("<IndVars>k__BackingField", BindingFlags.NonPublic | BindingFlags.Instance)!
         .SetValue(ind, new VolSysAPI.Indicators.IndVarsClass());
@@ -79,6 +85,19 @@ void RunChart(FakeVAn van, int shift, string clock)
     Console.WriteLine();
 
     var sig = lines.FirstOrDefault(l => l.StartsWith("DSPX;SIG;"));
+    if (studyEnd > 0)
+    {
+        var opened = new (string label, bool ok)[]
+        {
+            ("StudyEndDate respecte : 1 seance comptee", lines.Any(l => l.StartsWith("DSPX;STUDYINFO;sessions=1;") && l.Contains("end_exclusive=2026-10-14"))),
+            ("Aucune erreur", !lines.Any(l => l.StartsWith("DSPX;ERR;"))),
+        };
+        Console.WriteLine("(etude arretee au 14/10)");
+        foreach (var c in opened) Console.WriteLine((c.ok ? "OK    " : "ECHEC ") + c.label);
+        Console.WriteLine();
+        allOk &= opened.All(c => c.ok);
+        return;
+    }
     if (!complete)
     {
         var partial = new (string label, bool ok)[]
@@ -104,6 +123,10 @@ void RunChart(FakeVAn van, int shift, string clock)
         ("Sortie a l'objectif en temps reel : +52 ticks", lines.Any(l => l == "DSPX;EXIT;1;" + T(553) + ";Target;5019.75;52")),
         ("Summary lu 5 barres avant le signal (pas de vue sur l'avenir en historique)",
             sig != null && sig.Split(';')[18] == FakeVAn.SummaryAt(signalBar - 5).ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)),
+        ("Etude scalps : les 2 seances d'octobre comptees (holdout ouvert pour les scalps), test final a partir du 05/11 exclu",
+            lines.Any(l => l.StartsWith("DSPX;STUDYINFO;sessions=2;") && l.Contains("end_exclusive=2026-11-05")) &&
+            panel.Any(t => t.StartsWith("Etude scalps (stop 16 / objectif 24") && t.Contains("test final a partir du 05/11 exclu") && t.Contains("MOINS DE 40 SEANCES"))),
+        ("Etude : une ligne par regle dans le panneau", panel.Count(t => t.StartsWith("  H1 ") || t.StartsWith("  H2 ")) == 7),
         ("Ligne STATE en temps reel (horloge, reperage, regime)", lines.Any(l => l.StartsWith("DSPX;STATE;") && l.Contains(";horloge=" + clock + ";") &&
             l.Contains("map=envelopes=1(0/1/2)") && l.Contains("regime=ShortGamma"))),
         ("Lignes LAG en temps reel (Summary a 0 sur la barre qui se ferme)", lines.Any(l => l.StartsWith("DSPX;LAG;") && l.Contains("summary=0|0|0|-"))),

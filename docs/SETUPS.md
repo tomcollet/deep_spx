@@ -1,4 +1,4 @@
-# Indicateur de setups (v1.5)
+# Indicateur de setups (v1.6)
 
 `src/DeepSpxSetups` : indicateur DeepCharts **« DeepSpx - Setups gamma x order flow »**. Il signale des achats et des
 ventes selon les trois setups de [STRATEGIE.md](STRATEGIE.md), dessine les signaux et leur résultat simulé, et
@@ -76,8 +76,29 @@ régulière précédente, Major, Minor et Zero Gamma.
   90e percentile) et la barre ne clôture pas sur son extrême : entrée vers le strike.
 - Objectif : le strike. Stop : 1 ATR5 au-delà de l'extrême. FLAT à 15:45.
 
+**Règle de risque de Tom (04/11/2026), pour tous les setups** : jamais plus de **25 ticks** de risque, objectif d'au
+moins **1,5 fois** le risque. Le signal est mesuré depuis l'entrée attendue (clôture + 1 tick) ; s'il ne respecte pas la
+règle, il est **refusé**, pas ajusté (panneau : « refusé : risque… » ou « refusé : objectif… », compteurs dans `HIST`).
+À l'ouverture suivante, une entrée qui porterait le risque au-delà de 25 ticks, ou qui ouvre déjà au-delà du stop, est
+annulée. Conséquence attendue : le setup C (objectif = le strike, stop à 1 ATR5 au-delà de l'extrême) passera rarement.
+
 **Filtres communs** : séance régulière 09:30-16:00 New York ; pas d'entrée les 5 premières minutes ni après 15:45 ;
 FLAT de tout à 15:45 ; une position à la fois ; 3 signaux par jour au plus ; arrêt après 2 pertes.
+
+## Étude des scalps (H1, H2)
+
+Calculée par l'indicateur sur l'historique chargé, selon [research/scalp_flux/PREREG.md](../research/scalp_flux/PREREG.md),
+et affichée dans le panneau (critère principal : stop 16, objectif 24 ticks) :
+- **H1** : minute d'agression extrême (rang du delta ≥ 90) suivie en short gamma, contrée en long gamma ; contrôles
+  « toujours suivie », « toujours contrée », « hasard » ;
+- **H2** : saut de Net Flow (rang ≥ 90) dans son sens ; contrôles « sans ES même sens », « hasard » ;
+- par ligne : trades, taux de gain et seuil de rentabilité, espérance nette par trade et son intervalle de confiance
+  (bootstrap par séance), découverte (60 % premières séances) et validation (40 % dernières) ; puis la robustesse à
+  2 ticks par exécution.
+- Séances : celles avec DeepGamma jusqu'au **04/11/2026 inclus** (holdout ouvert pour les scalps par décision de Tom) ;
+  les séances live à partir du 05/11 sont le **test final** et n'entrent pas dans l'étude. Moins de 40 séances :
+  « non concluant ».
+- Lignes `DSPX;STUDYINFO` et `DSPX;STUDY` (toute la grille : stops 12, 16, 20, 24) dans le log.
 
 ## Exécution simulée
 
@@ -121,7 +142,8 @@ FLAT de tout à 15:45 ; une position à la fois ; 3 signaux par jour au plus ; a
 ## Paramètres de l'indicateur
 
 `EnableSetupA/B/C`, `RequireNetFlow`, `UseSummarySign`, `BlockOnStaleGamma`, `MaxTradesPerDay` (3), `MaxLossesPerDay`
-(2), `SlippageTicks` (1), `ApplyOptionOffset` (ajoute l'écart indice/future de la barre aux niveaux DeepGamma, si ceux-ci
+(2), `SlippageTicks` (1), `MaxRiskTicks` (25), `MinRewardRisk` (1.5), `ShowStudy`, `StudyStartDate` (0),
+`StudyEndDate` (20261105, exclu : ne pas dépasser sans décision, au-delà l'étude entame le test final), `ApplyOptionOffset` (ajoute l'écart indice/future de la barre aux niveaux DeepGamma, si ceux-ci
 s'avèrent être en prix SPX), `EnvelopesId`, `SummaryId`, `NetFlowId`, `MmPressureId` (-1 = automatique),
 `MaxIndicatorScan`, `BarTimeZone`, `SummaryLagBars` (5), `LagLogMinutes` (30), `ShowStats`, `PanelFontSize`, `PanelX`, `PanelY`, `PanelLineStep`. Les autres seuils sont dans
 `Engine/EngineSettings.cs`.

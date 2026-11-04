@@ -48,6 +48,15 @@ namespace DeepSpx.Engine
 
         public EngineSettings Settings => S;
 
+        // Mesures de la derniere barre, pour l'etude des scalps (ScalpStudy)
+        public double LastDelta { get; private set; }
+        public double LastDeltaRank { get; private set; } = double.NaN;
+        public bool RankReady { get; private set; }
+
+        // Signaux refuses par la regle de risque (25 ticks, 1,5R)
+        public int RejectedRisk { get; private set; }
+        public int RejectedReward { get; private set; }
+
         public SetupEngine(EngineSettings settings)
         {
             S = settings ?? new EngineSettings();
@@ -110,7 +119,9 @@ namespace DeepSpx.Engine
             {
                 var p = _pending;
                 _pending = null;
-                if (rth && minute < S.ForcedExitMinute)
+                double fillPrice = bar.Open + (int)p.Side * S.SlippageTicks * tick;
+                double fillRisk = (int)p.Side * (fillPrice - p.Stop) / tick;
+                if (rth && minute < S.ForcedExitMinute && fillRisk > 0 && fillRisk <= S.MaxRiskTicks + 1e-9)
                 {
                     p.Filled = true;
                     p.EntryBar = bar.Index;
@@ -121,6 +132,7 @@ namespace DeepSpx.Engine
                 }
                 else
                 {
+                    // hors seance, ouverture deja au-dela du stop, ou risque porte au-dela de 25 ticks : pas d'entree
                     p.Closed = true;
                     p.Exit = ExitReason.Cancelled;
                     NewExits.Add(p);
@@ -134,6 +146,9 @@ namespace DeepSpx.Engine
             double delta = bar.AskVolume - bar.BidVolume;
             double deltaRank = _absDelta.Rank(Math.Abs(delta));   // rang par rapport aux barres precedentes
             bool rankReady = _absDelta.Count >= S.PercentileMinSamples;
+            LastDelta = delta;
+            LastDeltaRank = deltaRank;
+            RankReady = rankReady;
             if (rth) _absDelta.Add(Math.Abs(delta));
             _atr.Add(bar.High, bar.Low, bar.Close);
             if (rth)
@@ -177,6 +192,26 @@ namespace DeepSpx.Engine
                     s = TryWallReject(bar, delta, deltaRank, atr5, tick);
                 if (s == null && S.EnableContinuation && Regime == Regime.ShortGamma)
                     s = TryContinuation(bar, delta, deltaRank, atr5, tick);
+                if (s != null)
+                {
+                    // Regle de risque : entree attendue = cloture + glissement
+                    double expected = bar.Close + (int)s.Side * S.SlippageTicks * tick;
+                    double risk = (int)s.Side * (expected - s.Stop) / tick;
+                    double reward = (int)s.Side * (s.Target - expected) / tick;
+                    if (risk > S.MaxRiskTicks + 1e-9)
+                    {
+                        RejectedRisk++;
+                        Blocked = KindLetter(s.Kind) + " refuse : risque " + risk.ToString("0", System.Globalization.CultureInfo.InvariantCulture) + " ticks > " + S.MaxRiskTicks;
+                        s = null;
+                    }
+                    else if (reward < S.MinRewardRisk * risk - 1e-9)
+                    {
+                        RejectedReward++;
+                        Blocked = KindLetter(s.Kind) + " refuse : objectif " + reward.ToString("0", System.Globalization.CultureInfo.InvariantCulture) + " t < " +
+                                  S.MinRewardRisk.ToString("0.0#", System.Globalization.CultureInfo.InvariantCulture) + " x risque " + risk.ToString("0", System.Globalization.CultureInfo.InvariantCulture) + " t";
+                        s = null;
+                    }
+                }
                 if (s != null)
                 {
                     s.Id = _nextId++;

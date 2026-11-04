@@ -58,6 +58,11 @@ namespace DeepSpx.Engine
         public int TimeStopBarsB = 60;
         public int TimeStopBarsC = 105;
 
+        // ---- Regle de risque de Tom (04/11/2026), pour tous les setups : jamais plus de 25 ticks de risque, et un
+        //      objectif d'au moins 1,5 fois le risque. Un signal qui ne la respecte pas est refuse, pas ajuste.
+        public int MaxRiskTicks = 25;
+        public double MinRewardRisk = 1.5;
+
         // ---- Risque et execution simulee
         public int MaxTradesPerDay = 3;
         public int MaxLossesPerDay = 2;
