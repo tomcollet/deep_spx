@@ -50,7 +50,8 @@ dotnet run --project tests/ProbeHarness  # graphique simulé : les verdicts doiv
 | `tests/ProbeHarness` | Graphique simulé qui vérifie les verdicts de la sonde |
 | `tools/ApiDump` | Liste l'API réelle des DLL de Deepchart sans les exécuter (repris de `tomcollet/deep`) |
 | `tools/DllCheck` | Imite le contrôle de Deepchart : signale ce que la DLL référence d'interdit (repris de `tomcollet/deep`) |
-| `tools/extract_dspx.py` | Relit le log de Deepchart et range les lignes `DSPX;` de la DLL en fichiers CSV |
+| `tools/read_log_window.py` | Lit les lignes `DSPX;` affichées dans la fenêtre Log de DeepCharts (UI Automation de Windows) |
+| `tools/extract_dspx.py` | Range les lignes `DSPX;` lues en fichiers CSV par type |
 | `docs/` | Stratégie, architecture, protocole de recherche, feuille de route, ce qu'on sait du SDK |
 | `research/` | Labo Python (à venir) |
 | `engine/` | Moteur de décision temps réel (à venir) |

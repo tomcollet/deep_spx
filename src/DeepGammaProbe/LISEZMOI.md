@@ -79,7 +79,19 @@ lisible en replay (l'issue #4 dit oui) et **si le replay rejoue le carnet** (lig
 la fin du test C). Si les séries lisibles dépassent la hauteur du graphique, augmente la hauteur de la fenêtre ou
 baisse `PanelFontSize`.
 
-**Log** (seulement s'il devient lisible) :
+**Fenêtre Log de DeepCharts** : elle affiche les lignes `DSPX;` en clair, mais Ctrl+A / Ctrl+C n'y copie que l'heure
+et le niveau. `tools/read_log_window.py` la lit par l'API d'accessibilité de Windows (comme un lecteur d'écran) :
+
+```powershell
+pip install uiautomation
+python tools\read_log_window.py --out data\probe\testA\log.txt            # lignes visibles
+python tools\read_log_window.py --follow --out data\probe\testB\log.txt   # en continu pendant le test B
+python tools\extract_dspx.py data\probe\testA\log.txt --out data\probe\testA
+```
+
+Si rien n'est lu : `python tools\read_log_window.py --dump` affiche la structure de la fenêtre, à m'envoyer.
+
+**Fichier de log** (chiffré, inutilisable tel quel) :
 
 Trouve le log de Deepchart qui contient les lignes de la sonde (PowerShell, après un test) :
 
