@@ -104,6 +104,8 @@ void RunChart(FakeVAn van, int shift, string clock)
         ("Sortie a l'objectif en temps reel : +52 ticks", lines.Any(l => l == "DSPX;EXIT;1;" + T(553) + ";Target;5019.75;52")),
         ("Summary lu 5 barres avant le signal (pas de vue sur l'avenir en historique)",
             sig != null && sig.Split(';')[18] == FakeVAn.SummaryAt(signalBar - 5).ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)),
+        ("Ligne STATE en temps reel (horloge, reperage, regime)", lines.Any(l => l.StartsWith("DSPX;STATE;") && l.Contains(";horloge=" + clock + ";") &&
+            l.Contains("map=envelopes=1(0/1/2)") && l.Contains("regime=ShortGamma"))),
         ("Lignes LAG en temps reel (Summary a 0 sur la barre qui se ferme)", lines.Any(l => l.StartsWith("DSPX;LAG;") && l.Contains("summary=0|0|0|-"))),
         ("Fleche + etiquette du signal, resultat a la sortie", marks.Count(a => a.AnnotationType == AnnotationType.ArrowUp) == lines.Count(l => l.StartsWith("DSPX;SIG;") && l.Contains(";LONG;")) && marks.Any(a => a.Text == "B achat") && marks.Any(a => a.Text == "+52 t")),
         ("Panneau : regime short gamma", panel.Any(t => t.Contains("SHORT GAMMA"))),

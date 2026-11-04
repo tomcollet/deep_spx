@@ -32,7 +32,7 @@ namespace DeepSpx.Setups
     public class SetupsIndicator : VolSysAPI.Indicators.Indicator
     {
         public const string Prefix = "DSPX;";
-        public const string Version = "1.3";
+        public const string Version = "1.4";
 
         public static IndicatorDescriptionBase Register() =>
             new IndicatorDescriptionBase
@@ -159,6 +159,7 @@ namespace DeepSpx.Setups
                     if ((_envId < 0 || _sumId < 0 || _nfId < 0) && _rtCloses % 15 == 1) MapGamma();
                     Process(b);
                     LogLag(b);
+                    if (_rtCloses % 5 == 1) LogState(b);     // etat repete : le fichier lu par read_log_window.py le contient toujours
                     UpdatePanel();
                 }
             }
@@ -328,6 +329,20 @@ namespace DeepSpx.Setups
                 if (!double.IsNaN(v) && v != 0.0) return v;
             }
             return double.NaN;
+        }
+
+        /// Etat complet en une ligne (premiere minute de temps reel, puis toutes les 5 minutes).
+        private void LogState(int b)
+        {
+            var e = _engine;
+            string pos = e.Position != null ? "position " + SetupEngine.KindLetter(e.Position.Kind) + "#" + e.Position.Id
+                       : e.Pending != null ? "signal " + SetupEngine.KindLetter(e.Pending.Kind) + "#" + e.Pending.Id : "aucune";
+            Log("STATE", new[] { Fmt(VAn.BarVars[b].exchDt), "v" + Version, "regime=" + e.Regime, "raison=" + e.RegimeReason,
+                "zg=" + Fmt(e.ZeroGamma), "major=" + Fmt(e.MajorGamma), "minor=" + Fmt(e.MinorGamma),
+                "summary=" + Fmt(e.Summary) + (e.SummaryStale ? "(ignore)" : ""), "pente_netflow=" + Fmt(e.NetFlowSlope),
+                "vwap=" + Fmt(e.Vwap), "atr5=" + e.Atr5.ToString("0.00", IC), "age_gamma=" + (e.GammaAgeBars == int.MaxValue ? "-" : e.GammaAgeBars.ToString(IC)),
+                "signaux_jour=" + e.TradesToday, "pertes_jour=" + e.LossesToday, "etat=" + pos, "bloque=" + e.Blocked,
+                "signaux_total=" + e.Signals.Count, "horloge=" + (_chicago ? "Chicago" : "NewYork"), "map=" + _mapText });
         }
 
         /// Une ligne par minute de temps reel : Summary et Pressure sur la barre qui se ferme et les 6 precedentes.

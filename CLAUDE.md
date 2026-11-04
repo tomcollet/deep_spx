@@ -76,7 +76,7 @@ travail : **français** (docs, commentaires, messages de commit).
    (niveaux a priori déjà en prix ES : `ApplyOptionOffset` désactivé). Remettre Option Summary et Option Net Flow sur le
    graphique.
 2. Q7 (04/11, `docs/SDK_DEEPCHARTS.md`) : Envelopes et Net Flow lisibles en live ; Summary et MM Pressure remplis avec
-   ~3 minutes de retard (lus avec `SummaryLagBars` = 5). Confirmer le retard avec les lignes `DSPX;LAG`.
+   3 minutes de retard, mesuré par les lignes `DSPX;LAG` (lus avec `SummaryLagBars` = 5).
 3. Test C (Deep Replay), lignes capturées par `tools/read_log_window.py --follow`.
 4. Ensuite : enregistreur par minute (étape 2) et backtest C# en ligne de commande réutilisant `Engine/`, puis une étude
    préenregistrée par setup sur les séances d'avant le 16/08/2026.

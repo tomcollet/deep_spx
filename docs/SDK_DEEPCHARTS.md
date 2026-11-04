@@ -78,7 +78,9 @@ utiliser (doc `troubleshooting`). **Documenté, et confirmé par `tools/DllCheck
     coup. Rechargée à 12:58:46, la sonde trouve des valeurs jusqu'à 12:55 et des 0 sur 12:56-12:58 (598 barres
     renseignées sur 601). DeepGamma les écrit donc avec environ 3 minutes de retard : c'est sans doute ce que l'issue
     #4 décrit comme « 0 en live ». L'indicateur de setups les lit 5 barres en arrière (`SummaryLagBars`), en historique
-    comme en live, et mesure ce retard (lignes `DSPX;LAG`).
+    comme en live, et mesure ce retard (lignes `DSPX;LAG`). **Mesuré de 13:31 à 13:45 New York (15 minutes)** :
+    Summary et Pressure valent 0 sur la barre qui se ferme et les deux précédentes, et sont remplis à partir de la
+    troisième (une fois dès la deuxième) ; une valeur écrite ne change plus ensuite. Retard : 3 barres.
   - Summary est passé de négatif (matin, -15,7 Md à 02:58) à positif (+337 Md à 12:55).
 - **Carnet et trades en live** : carnet complet (≈ 900 niveaux bid / 520 ask, nombre d'ordres par niveau), pas de MBO ;
   chaque trade porte `AggrID` et `RestID` (203 sur 204, 1993 sur 1994 par minute).

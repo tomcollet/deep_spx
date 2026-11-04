@@ -1,4 +1,4 @@
-# Indicateur de setups (v1.3)
+# Indicateur de setups (v1.4)
 
 `src/DeepSpxSetups` : indicateur DeepCharts **« DeepSpx - Setups gamma x order flow »**. Il signale des achats et des
 ventes selon les trois setups de [STRATEGIE.md](STRATEGIE.md), dessine les signaux et leur résultat simulé, et
@@ -107,7 +107,11 @@ FLAT de tout à 15:45 ; une position à la fois ; 3 signaux par jour au plus ; a
     Gamma, distance au Zero Gamma en ticks, pente du Net Flow, Summary, VWAP ;
   - `DSPX;FILL` : entrée simulée ;
   - `DSPX;EXIT` : sortie (raison, prix, ticks) ;
-  - `DSPX;HIST` : bilan du rejeu de l'historique.
+  - `DSPX;HIST` : bilan du rejeu de l'historique ;
+  - `DSPX;STATE` : état complet (régime et raison, niveaux, Summary, pente du Net Flow, VWAP, ATR5, signaux du jour,
+    position, horloge, repérage), à la première minute de temps réel puis toutes les 5 minutes : un fichier lu par
+    `read_log_window.py` le contient même si les lignes du chargement n'étaient plus à l'écran ;
+  - `DSPX;LAG` : Summary et Pressure sur les 7 dernières barres, chaque minute (30 premières minutes).
 - **Statistiques** (`ShowStats`, désactivé par défaut) : les séances récentes sont dans la période scellée (à partir du
   16/08/2026). On peut regarder les signaux, on ne règle rien dessus.
 
