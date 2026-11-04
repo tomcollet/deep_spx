@@ -21,6 +21,10 @@ impossible. Proposition ci-dessous, **à valider par Tom**.
 
 ## Proposition : moteur C# pur, sur le modèle de `deep`
 
+> **04/11/2026** : Tom a demandé de continuer l'indicateur de setups ; ce montage est donc celui de
+> `src/DeepSpxSetups` (moteur dans `Engine/`, vérifié hors de Deepchart par `tests/EngineChecks`). Le backtest en ligne
+> de commande reste à écrire. Voir [SETUPS.md](SETUPS.md).
+
 ```
 Flux de marché ─► DeepCharts desktop (PC Windows)
                    └─ graphique options SPX (symbole ES-CME, 1 min)
@@ -63,8 +67,10 @@ chaîne. L'outil de backtest rejoue les mêmes données hors de Deepchart.
 
 - **Démarrage** : au chargement, la DLL calcule l'historique du graphique pour remplir les percentiles ; signaux
   seulement en temps réel.
-- **Garde-fou** : plus de nouveaux trades si aucun trade n'arrive en séance, si DeepGamma ne bouge plus depuis
-  3 minutes, ou s'il vaut 0 en live (issue #4).
+- **Garde-fou** : plus de nouveaux trades si aucun trade n'arrive en séance, si DeepGamma ne bouge plus, ou s'il vaut
+  0 en live (issue #4). Dans l'indicateur v1 : régime inconnu si la dernière valeur valide a plus de 15 barres ou si
+  rien n'a bougé depuis 45 barres de séance (DeepGamma ne se met pas forcément à jour chaque minute ; seuil à revoir
+  après le test B).
 - **Journal** : chaque enregistrement est horodaté en heure de bourse ; une journée se rejoue à l'identique.
 - **Poste** : DeepCharts ouvert, mise en veille et redémarrages Windows Update coupés pendant la séance. À terme, un VPS
   Windows.

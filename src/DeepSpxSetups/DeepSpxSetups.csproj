@@ -1,0 +1,54 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Indicateur de setups deep_spx (voir docs/SETUPS.md). Le moteur (Engine/) est du C# pur, compilé dans la même dll.
+    Meme structure que le projet d'exemples officiel (github.com/VolumetricaTrading/deepchart-indicators-api) :
+    net10.0, seulement VolSysAPI et VolumetricaCore en reference, la dll est ecrite dans Documents\Deepchart\Indicators.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Library</OutputType>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+    <RootNamespace>DeepSpx.Setups</RootNamespace>
+    <!-- Le nom de la dll fait partie de l'identite de l'indicateur dans un workspace : ne pas le changer ensuite -->
+    <AssemblyName>DeepSpx.Setups</AssemblyName>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <GenerateDependencyFile>false</GenerateDependencyFile>
+    <!-- Les attributs de Deepchart sont declares reserves a Windows (CA1416) : sans consequence, Deepchart ne tourne que sous Windows -->
+    <NoWarn>$(NoWarn);CA1416</NoWarn>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <!-- Dossier d'installation de Deepchart. Autre dossier : dotnet build -p:DeepchartDir="D:\Deepchart\" -->
+    <DeepchartDir Condition="'$(DeepchartDir)' == ''">C:\Program Files\Volumetrica Trading\Deepchart\</DeepchartDir>
+    <DeepchartLibDir>$([MSBuild]::EnsureTrailingSlash('$(DeepchartDir)'))</DeepchartLibDir>
+    <!-- Developer id : a passer en ligne de commande pour qu'il ne soit jamais committe -->
+    <DeepchartDevId Condition="'$(DeepchartDevId)' == ''">YOUR-DEV-ID</DeepchartDevId>
+    <!-- Le dossier d'ou Deepchart charge les indicateurs locaux -->
+    <OutputPath Condition="'$(OutputPath)' == ''">$(UserProfile)\Documents\Deepchart\Indicators\</OutputPath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <AssemblyMetadata Include="DeepchartDevId" Value="$(DeepchartDevId)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Private = false : ces bibliotheques font partie de Deepchart, elles ne sont pas copiees a cote de la dll -->
+    <Reference Include="VolSysAPI">
+      <HintPath>$(DeepchartLibDir)VolSysAPI.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="VolumetricaCore">
+      <HintPath>$(DeepchartLibDir)VolumetricaCore.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+  <Target Name="CheckDeepchartSettings" BeforeTargets="ResolveAssemblyReferences">
+    <Error Condition="!Exists('$(DeepchartLibDir)VolSysAPI.dll') Or !Exists('$(DeepchartLibDir)VolumetricaCore.dll')"
+           Text="VolSysAPI.dll et VolumetricaCore.dll introuvables dans '$(DeepchartDir)'. Indique le dossier de Deepchart : dotnet build -p:DeepchartDir=&quot;C:\chemin\vers\Deepchart\\&quot;" />
+    <Warning Condition="'$(DeepchartDevId)' == 'YOUR-DEV-ID'"
+             Text="DeepchartDevId n'est pas renseigne : Deepchart ne chargera pas cette dll. Passe-le en ligne de commande : -p:DeepchartDevId=..." />
+  </Target>
+</Project>

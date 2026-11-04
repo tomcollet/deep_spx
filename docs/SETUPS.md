@@ -1,0 +1,118 @@
+# Indicateur de setups (v1)
+
+`src/DeepSpxSetups` : indicateur DeepCharts **« DeepSpx - Setups gamma x order flow »**. Il signale des achats et des
+ventes selon les trois setups de [STRATEGIE.md](STRATEGIE.md), dessine les signaux et leur résultat simulé, et
+**n'envoie aucun ordre**.
+
+> **Rien n'est encore validé.** Les seuils sont les valeurs de départ fixées *avant* tout test (STRATEGIE.md), avec les
+> substitutions ci-dessous. Aucune n'a été réglée sur des données. Un signal n'est pas une recommandation tant que
+> l'étape 4 de la [feuille de route](FEUILLE_DE_ROUTE.md) n'est pas passée.
+
+## Montage
+
+```
+Graphique options SPX (ES-CME, 1 min) + indicateurs DeepGamma + DeepSpx Setups
+  └─ SetupsIndicator.cs : lit les barres et DeepGamma, dessine, écrit le log
+       └─ Engine/ (C# pur) : régime, zones, setups, sorties simulées, statistiques
+```
+
+- **Repérage par nom** (`GetParamsById`) : `Option Envelopes` (séries Zero, Major, Minor Gamma), `Option Summary`
+  (Regime), `Option Net Flow` (Difference), `Option Market Maker Pressure` (MM Pressure, journalisé seulement). Le
+  premier indicateur trouvé de chaque nom est retenu : avec deux Option Summary, c'est celui ajouté en premier. Les
+  paramètres `EnvelopesId`, `SummaryId`, `NetFlowId` et `MmPressureId` forcent un numéro.
+- **Historique** : rejoué d'un bloc à la fin du chargement (`OnEnd(false)`), barre par barre, une fois que DeepGamma a
+  calculé ses valeurs. **Temps réel** : une barre à chaque fermeture (`OnClose`). Même moteur, même ordre des calculs.
+- **Barres** : 1 minute, heure de bourse (Chicago). Delta = volume à l'ask − volume au bid de la barre.
+
+## Régime
+
+| Régime | Condition (dans cet ordre) |
+|---|---|
+| Inconnu | Zero Gamma absent ; dernière valeur DeepGamma valide vieille de plus de 15 barres ; aucune valeur DeepGamma n'a changé depuis 45 barres de séance (figé) ; ATR pas encore prêt |
+| Transition | prix à moins de 0,5 ATR5 du Zero Gamma |
+| Short gamma | prix sous le Zero Gamma, **ou** Option Summary / Regime négatif |
+| Long gamma | prix au-dessus du Zero Gamma, et Summary positif (ou absent, ou `UseSummarySign` désactivé) |
+
+Une valeur DeepGamma à 0 ou NaN est considérée comme absente ; la dernière valeur valide est conservée. Les règles
+« inconnu » couvrent les deux défauts possibles en live (issue #4 : 0, ou valeur figée).
+
+## Setups
+
+**A. Rejet de mur (long gamma).** Mur = Major ou Minor Gamma.
+- Vente : le plus haut touche le mur (4 ticks en dessous au plus, 2 ticks au-dessus au plus), la clôture reste
+  sous le mur, le delta est acheteur et au-dessus de son 90e percentile, et la clôture est à au moins 1,5 ATR5
+  au-dessus de la VWAP de séance. Achat : symétrique sous un mur.
+- Stop : 1 ATR5 (8 ticks au moins) au-delà de l'extrême de la barre. Objectif : VWAP. Sortie au temps : 45 barres.
+
+**B. Continuation (short gamma).** Niveaux : range d'ouverture 30 min (haut, bas), plus haut et plus bas de la séance
+régulière précédente, Major, Minor et Zero Gamma.
+- Achat : la clôture précédente est sous le niveau, la clôture passe au-dessus d'au moins 1 tick, le delta est acheteur
+  et au-dessus de son 80e percentile, la pente du Net Flow sur 5 barres est positive. Vente : symétrique.
+- Stop : 4 ticks de l'autre côté du niveau (8 ticks au moins de la clôture). Objectif : niveau suivant dans le sens du
+  trade (8 ticks au moins), sinon 2 ATR5. Sortie au temps : 60 barres.
+
+**C. Aimant de fin de séance (long gamma, à partir de 13:00 Chicago).** Strike aimant = Major Gamma.
+- Le prix est à 8 ticks au moins et 2 ATR5 au plus du strike, le delta pousse à l'opposé du strike (au-dessus de son
+  90e percentile) et la barre ne clôture pas sur son extrême : entrée vers le strike.
+- Objectif : le strike. Stop : 1 ATR5 au-delà de l'extrême. FLAT à 14:45.
+
+**Filtres communs** : séance régulière 08:30-15:00 Chicago ; pas d'entrée les 5 premières minutes ni après 14:45 ; FLAT
+de tout à 14:45 ; une position à la fois ; 3 signaux par jour au plus ; arrêt après 2 pertes.
+
+## Exécution simulée
+
+- Signal à la clôture d'une barre → entrée à **l'ouverture de la barre suivante**, + 1 tick contre soi.
+- Sorties : stop, objectif, temps ou fin de séance, toutes − 1 tick contre soi. **Stop et objectif touchés dans la même
+  barre → stop.**
+- Résultat en ticks, affiché à la sortie (« +52 t ») et dans le panneau.
+
+## Substitutions par rapport à STRATEGIE.md
+
+| Prévu | Implémenté | Raison |
+|---|---|---|
+| Distances en Expected Move | distances en **ATR5** (ATR de Wilder 30 barres × √5) | Expected Move n'expose pas de série lisible |
+| Call / Put walls | **Major / Minor Gamma** | les murs d'Option Levels ne sont pas lisibles |
+| Absorption « carnet qui se recharge » | barre qui touche le mur sans le dépasser, delta extrême contre elle | même calcul en historique et en live : le carnet n'a pas d'historique |
+| Cassure avec « profondeur d'en face qui baisse » | non utilisé (v1) | idem, carnet absent de l'historique |
+| Filtre d'annonces macro | non implémenté | pas d'agenda lisible par la DLL ; éviter les jours d'annonce à la main |
+
+## Sorties
+
+- **Graphique** : flèche et lettre du setup (« B achat ») sur la barre du signal ; résultat en ticks sur la barre de
+  sortie ; info-bulle avec niveau, stop, objectif et régime ; panneau en haut à gauche (régime et raison, niveaux
+  DeepGamma, âge des données, VWAP, ATR5, range d'ouverture, veille, état, signaux du jour, 5 derniers signaux).
+- **Log de Deepchart** (fenêtre Log, ou `tools/read_log_window.py`) :
+  - `DSPX;MAP` : numéros des indicateurs DeepGamma retenus ;
+  - `DSPX;SIG` : id, heure, setup, sens, régime, niveau, clôture, stop, objectif, delta, rang du delta, ATR5, Zero
+    Gamma, distance au Zero Gamma en ticks, pente du Net Flow, Summary, VWAP ;
+  - `DSPX;FILL` : entrée simulée ;
+  - `DSPX;EXIT` : sortie (raison, prix, ticks) ;
+  - `DSPX;HIST` : bilan du rejeu de l'historique.
+- **Statistiques** (`ShowStats`, désactivé par défaut) : les séances récentes sont dans la période scellée (à partir du
+  16/08/2026). On peut regarder les signaux, on ne règle rien dessus.
+
+## Paramètres de l'indicateur
+
+`EnableSetupA/B/C`, `RequireNetFlow`, `UseSummarySign`, `BlockOnStaleGamma`, `MaxTradesPerDay` (3), `MaxLossesPerDay`
+(2), `SlippageTicks` (1), `ApplyOptionOffset` (ajoute l'écart indice/future de la barre aux niveaux DeepGamma, si ceux-ci
+s'avèrent être en prix SPX), `EnvelopesId`, `SummaryId`, `NetFlowId`, `MmPressureId` (-1 = automatique),
+`MaxIndicatorScan`, `ShowStats`, `PanelFontSize`, `PanelX`, `PanelY`, `PanelLineStep`. Les autres seuils sont dans
+`Engine/EngineSettings.cs`.
+
+## Vérifications
+
+```
+dotnet run --project tests/EngineChecks     # 25 scénarios du moteur
+dotnet build tests/SetupsCompileCheck       # compile contre l'imitation de l'API, avertissements = erreurs
+dotnet run --project tools/DllCheck -- tests/SetupsCompileCheck/bin/Debug/net10.0/SetupsCompileCheck.dll
+dotnet run --project tests/SetupsHarness    # faux graphique : repérage, rejeu, temps réel, journal, panneau
+```
+
+## À vérifier sur le graphique de Tom
+
+1. **Niveaux en prix ES ou SPX ?** Le Zero Gamma du panneau doit tomber sur la ligne Zero Gamma tracée par DeepGamma sur
+   le graphique. Sinon, activer `ApplyOptionOffset`.
+2. **DeepGamma en live** (issue #4) : si le panneau passe en « régime inconnu, DeepGamma figé » ou « trop ancien »
+   pendant la séance US, la lecture live est bloquée et l'indicateur ne signale rien, comme prévu.
+3. **Summary toujours négatif** sur les séances lues le 04/11/2026 : le régime sera surtout short gamma, donc surtout des
+   setups B.

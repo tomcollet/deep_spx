@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Banc d essai de l indicateur de setups : faux graphique Deepchart avec faux indicateurs DeepGamma, contre
+    l'imitation de l'API, verifie les verdicts de summary.txt et sort en erreur si l'un d'eux est faux.
+    Lancement : dotnet run, option project, sur tests/ProbeHarness (voir README)
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+    <IsPackable>false</IsPackable>
+    <NoWarn>$(NoWarn);CA1416</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="../../src/DeepSpxSetups/**/*.cs" Exclude="../../src/DeepSpxSetups/obj/**;../../src/DeepSpxSetups/bin/**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../DeepchartApiStubs/DeepchartApiStubs.csproj" />
+  </ItemGroup>
+</Project>

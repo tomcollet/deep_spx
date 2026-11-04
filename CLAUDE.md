@@ -20,9 +20,12 @@ travail : **français** (docs, commentaires, messages de commit).
   réflexion, ni aux threads ni à `lock`. Sortie prévue : le log de Deepchart (`VAn.AddToLog`, lignes `DSPX;`), **mais ce
   log est chiffré sur disque (constaté le 04/11/2026)** : ne pas chercher à le déchiffrer. La sonde v4 affiche ses
   résultats sur le graphique ; le canal de sortie du moteur est à redéfinir (voir `docs/ARCHITECTURE.md`).
-- **À valider par Tom (03/11/2026)** : la décision initiale « features en C#, règles en Python reliées par socket » est
-  impossible (pas de socket). Proposition dans `docs/ARCHITECTURE.md` : moteur C# pur `Engine/` partagé par la DLL et
-  un backtest en ligne de commande, comme dans `deep` ; Python pour explorer seulement.
+- **Moteur C# pur dans la DLL** : la décision initiale « règles en Python reliées par socket » est impossible (pas de
+  socket). Le 04/11/2026, Tom a demandé de continuer l'indicateur de setups : le moteur vit dans
+  `src/DeepSpxSetups/Engine` (C# pur, sans Deepchart), compilé dans la DLL et dans `tests/EngineChecks` ; un backtest
+  en ligne de commande le réutilisera. Python pour explorer seulement. Voir `docs/SETUPS.md`.
+- **Indicateur de setups v1** : signaux seulement, aucun ordre. Seuils = valeurs de départ de `docs/STRATEGIE.md`, non
+  réglées ; ne pas les régler sur les séances du holdout. Statistiques masquées par défaut (`ShowStats`).
 - **Ticks `.tdatac` comme référence** des trades ; minutes reconstruites depuis les ticks ; exports minutes DeepCharts
   uniquement pour le contrôle.
 - **Holdout scellé : séances à partir du 16/08/2026** (même coupure que le banc Ticks/lab). Ne jamais l'ouvrir pour
@@ -40,9 +43,15 @@ travail : **français** (docs, commentaires, messages de commit).
   `deepchart-api.txt` du 04/11/2026 (VolSysAPI 1.4.6.0). Ne les modifier que pour refléter l'API réelle, jamais pour faire
   passer du code. Points piégeux : `GetSeriesValueById` renvoie `double[]`, `VolTotList` est un tableau,
   `CallHandler` vaut Off = 0, HistRT = 1, RT = 2.
-- **Avant chaque commit touchant la DLL** : `dotnet build tests/ProbeCompileCheck`, puis
-  `dotnet run --project tools/DllCheck -- tests/ProbeCompileCheck/bin/Debug/net10.0/ProbeCompileCheck.dll` (aucune
-  référence interdite), puis `dotnet run --project tests/ProbeHarness` (tout doit finir en OK).
+- **Avant chaque commit touchant une DLL** :
+  - sonde : `dotnet build tests/ProbeCompileCheck`, puis
+    `dotnet run --project tools/DllCheck -- tests/ProbeCompileCheck/bin/Debug/net10.0/ProbeCompileCheck.dll` (aucune
+    référence interdite), puis `dotnet run --project tests/ProbeHarness` (tout doit finir en OK) ;
+  - setups : `dotnet run --project tests/EngineChecks`, `dotnet build tests/SetupsCompileCheck`, puis
+    `dotnet run --project tools/DllCheck -- tests/SetupsCompileCheck/bin/Debug/net10.0/SetupsCompileCheck.dll`, puis
+    `dotnet run --project tests/SetupsHarness` (tout en OK).
+- **Rien dans `Engine/` ne dépend de Deepchart** (ni `VolSysAPI`, ni `VolumetricaCore`) et tout y respecte aussi le bac
+  à sable, puisque le même code est compilé dans la DLL.
 - **Dans la DLL** : pas d'indexeur `this[...]`, pas de `params`, pas de `ex.GetType().Name`, pas de `System.IO`,
   `System.Net`, `System.Threading`, `System.Reflection`, `Environment`. Les signatures inconnues se lisent avec
   `tools/ApiDump`, jamais par réflexion dans la DLL.
@@ -59,8 +68,10 @@ travail : **français** (docs, commentaires, messages de commit).
 
 ## Prochaine action
 
-Attendre la réponse de Tom sur l'architecture (moteur C# pur), puis les sorties de la sonde v2 (tests A, B, C de
-`src/DeepGammaProbe/LISEZMOI.md`, relues par `tools/extract_dspx.py`) et `deepchart-api.txt` :
-- Q1 OUI → écrire l'enregistreur (étape 2) ;
-- Q1 NON → étudier `deepchart-api.txt` et les identifiants du Pattern Builder ; en dernier recours, plan B OPRA ;
-- Q7 (zéros en live, issue #4) → la recherche continue en replay ; le live attend un correctif de Volumetrica.
+1. Tom compile et pose l'indicateur de setups ; vérifier que le Zero Gamma du panneau tombe sur la ligne DeepGamma
+   (sinon `ApplyOptionOffset`, ou les niveaux sont en prix SPX).
+2. Test B de la sonde en séance US (Q7, issue #4) : si DeepGamma est figé ou nul en live, l'indicateur reste en régime
+   inconnu, ce qui est voulu ; la recherche continue en Deep Replay.
+3. Test C (Deep Replay), lignes capturées par `tools/read_log_window.py --follow`.
+4. Ensuite : enregistreur par minute (étape 2) et backtest C# en ligne de commande réutilisant `Engine/`, puis une étude
+   préenregistrée par setup sur les séances d'avant le 16/08/2026.
