@@ -69,6 +69,11 @@ utiliser (doc `troubleshooting`). **Documenté, et confirmé par `tools/DllCheck
 - **Niveaux d'Option Envelopes déjà en prix ES** : Major et Minor Gamma = strike SPX + base ES - SPX (décimales qui
   varient dans la journée : 7729,325 puis 7739,175 ; Major - Minor = 60 points). Constaté le 04/11/2026, à confirmer
   sur la ligne tracée.
+- **DeepGamma en live (04/11/2026, 13:00 New York, sonde v4.1)** : les trois niveaux d'Option Envelopes sont lus
+  non nuls en temps réel et bougent (Zero Gamma 7717,38 en fin d'historique, 7717,90 quatre minutes plus tard). Option
+  Summary / Regime valait 0 sur la barre en cours en fin d'historique, et 281 Md dix barres plus tôt : valeurs temps
+  réel de Summary, Net Flow et Market Maker Pressure encore à relever (lignes `SER;rt`). Summary est passé de négatif
+  (matin) à positif (après-midi).
 - **Historique DeepGamma** : le graphique 1 minute du 04/11/2026 couvrait 15 jours (première barre le 20/10/2026,
   14 900 barres), avec des valeurs DeepGamma au moins 390 barres en arrière. Profondeur maximale non testée. Recharger seulement l'indicateur ne relivre pas les trades historiques (`hist_trades=0`).
 - Volume par prix : `NeedVbp = true`, puis `bar.PriceList` et `bar.VbpListAll[pinT][0]` (peut être `null`).

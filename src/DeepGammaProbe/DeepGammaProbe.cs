@@ -52,7 +52,7 @@ namespace DeepSpx.Probe
     public class DeepGammaProbe : VolSysAPI.Indicators.Indicator
     {
         public const string Prefix = "DSPX;";
-        public const string Version = "4.1";
+        public const string Version = "4.2";
 
         public static IndicatorDescriptionBase Register() =>
             new IndicatorDescriptionBase
@@ -548,7 +548,8 @@ namespace DeepSpx.Probe
                 lines.Add("Carnet : " + _bids.Count + " niveaux bid / " + _asks.Count + " ask, MBO=" + _nMbo +
                           "  |  trades hist/rt=" + _nTickHist + "/" + _nTickRt);
                 lines.Add("Series lisibles (indicateur / serie : valeur derniere barre fermee, couverture historique) :");
-                foreach (var s in _readable.Take(PanelMaxSeries))
+                // DeepGamma d'abord (indicateurs Option...), Deep Stats et le reste ensuite
+                foreach (var s in _readable.OrderBy(x => Name(x.Ind).StartsWith("Option", StringComparison.Ordinal) ? 0 : 1).Take(PanelMaxSeries))
                     lines.Add("  " + s.Ind + " " + Name(s.Ind) + " / " + s.Ser + " " + SeriesName(s.Ind, s.Ser) + " : " +
                               (s.LastRt.Length > 0 ? s.LastRt + " (rt)" : s.Last) + "  [" + s.Coverage + "/" + _histBarsScanned + "]");
                 if (_readable.Count > PanelMaxSeries) lines.Add("  ... et " + (_readable.Count - PanelMaxSeries) + " autres");

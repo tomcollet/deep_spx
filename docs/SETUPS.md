@@ -1,4 +1,4 @@
-# Indicateur de setups (v1.1)
+# Indicateur de setups (v1.2)
 
 `src/DeepSpxSetups` : indicateur DeepCharts **« DeepSpx - Setups gamma x order flow »**. Il signale des achats et des
 ventes selon les trois setups de [STRATEGIE.md](STRATEGIE.md), dessine les signaux et leur résultat simulé, et
@@ -43,6 +43,12 @@ Graphique options SPX (ES-CME, 1 min) + indicateurs DeepGamma + DeepSpx Setups
 
 Une valeur DeepGamma à 0 ou NaN est considérée comme absente ; la dernière valeur valide est conservée. Les règles
 « inconnu » couvrent les deux défauts possibles en live (issue #4 : 0, ou valeur figée).
+
+Summary et Net Flow ont en plus leur propre contrôle, parce qu'ils peuvent tomber à 0 ou se figer en live alors que les
+niveaux d'Option Envelopes bougent encore (sonde du 04/11/2026) :
+- **Summary** absent depuis plus de 15 barres, ou inchangé depuis plus de 45 : son signe est ignoré, le régime est lu
+  sur le Zero Gamma seul (panneau : « figé, ignoré ») ;
+- **Net Flow** absent depuis plus de 15 barres : plus de pente, donc plus de setup B.
 
 ## Setups
 

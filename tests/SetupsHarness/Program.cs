@@ -115,7 +115,7 @@ void RunChart(FakeVAn van, int shift, string clock)
 }
 
 /// Faux VAn : faux indicateurs DeepGamma. Envelopes Zero ~5100 / Major 5060 / Minor 4970 (prix sous le Zero Gamma),
-/// Summary negatif, Net Flow croissant (pente positive), MM Pressure constant.
+/// Summary negatif qui bouge, Net Flow croissant (pente positive), MM Pressure constant.
 public class FakeVAn : IMethodCloudAPI
 {
     public List<Structure.BarClass> BarVars { get; } = new();
@@ -169,7 +169,7 @@ public class FakeVAn : IMethodCloudAPI
             // Zero Gamma derive un peu a chaque barre, comme sur le graphique de Tom (7714,67 -> 7715,00 en 10 minutes)
             case 1: return new[] { SubgraphIndex == 0 ? 5100.0 + Index * 0.001 : SubgraphIndex == 1 ? 5060.0 : 4970.0 };
             case 7: return new[] { 1e8, 9e7 };
-            case 10: return new[] { -2e9 };
+            case 10: return new[] { -2e9 - Index * 1e6 };
             case 15: return new[] { SubgraphIndex == 2 ? 1000.0 + Index : 0.0 };
             default: return null;
         }

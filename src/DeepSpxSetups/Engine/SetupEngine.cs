@@ -32,6 +32,9 @@ namespace DeepSpx.Engine
         private double _zero = double.NaN, _major = double.NaN, _minor = double.NaN, _summary = double.NaN,
                        _netFlow = double.NaN, _mm = double.NaN;
         private int _lastValidBar = -1, _lastChangeBar = -1, _lastIndex = -1;
+        // Fraicheur propre a Summary et Net Flow : en live, ils peuvent valoir 0 ou rester figes (issue #4, sonde du
+        // 04/11/2026) alors que les niveaux d'Option Envelopes bougent encore.
+        private int _summaryValidBar = -1, _summaryChangeBar = -1, _netFlowValidBar = -1;
         private readonly Queue<double> _netFlowHist = new Queue<double>();
 
         private Signal _pending, _position;
@@ -65,6 +68,8 @@ namespace DeepSpx.Engine
         public double NetFlowSlope { get; private set; } = double.NaN;
         public int GammaAgeBars => _lastValidBar < 0 ? int.MaxValue : _lastIndex - _lastValidBar;
         public bool GammaStale { get; private set; }
+        /// Summary absent, nul ou fige depuis plus de StaleGammaBars barres : son signe n'entre plus dans le regime.
+        public bool SummaryStale { get; private set; } = true;
         public bool InRth => _inRth;
         public double OpeningHigh => _orDone ? _orHigh : double.NaN;
         public double OpeningLow => _orDone ? _orLow : double.NaN;
@@ -240,6 +245,11 @@ namespace DeepSpx.Engine
             Take(g.ZeroGamma, ref _zero, ref any, ref changed);
             Take(g.MajorGamma, ref _major, ref any, ref changed);
             Take(g.MinorGamma, ref _minor, ref any, ref changed);
+            if (Valid(g.SummaryRegime))
+            {
+                if (double.IsNaN(_summary) || g.SummaryRegime != _summary) _summaryChangeBar = index;
+                _summaryValidBar = index;
+            }
             Take(g.SummaryRegime, ref _summary, ref any, ref changed);
             Take(g.NetFlow, ref _netFlow, ref any, ref changed);
             Take(g.MmPressure, ref _mm, ref any, ref changed);
@@ -247,11 +257,17 @@ namespace DeepSpx.Engine
             if (changed || _lastChangeBar < 0) _lastChangeBar = index;
             GammaStale = rth && index - _lastChangeBar > S.StaleGammaBars;
 
+            SummaryStale = _summaryValidBar < 0 || index - _summaryValidBar > S.MaxGammaAgeBars ||
+                           index - _summaryChangeBar > S.StaleGammaBars;
+
             if (Valid(g.NetFlow))
             {
                 _netFlowHist.Enqueue(g.NetFlow);
                 while (_netFlowHist.Count > S.NetFlowLookbackBars + 1) _netFlowHist.Dequeue();
+                _netFlowValidBar = index;
             }
+            else if (_netFlowValidBar >= 0 && index - _netFlowValidBar > S.MaxGammaAgeBars)
+                _netFlowHist.Clear();                   // Net Flow perdu (0 en live) : plus de pente, pas de setup B
             if (_netFlowHist.Count == S.NetFlowLookbackBars + 1)
             {
                 double first = _netFlowHist.Peek();
@@ -277,7 +293,7 @@ namespace DeepSpx.Engine
 
             double dist = close - _zero;
             double band = S.TransitionAtr * atr5;
-            int sign = S.UseSummarySign && Valid(_summary) ? Math.Sign(_summary) : 0;
+            int sign = S.UseSummarySign && Valid(_summary) && !SummaryStale ? Math.Sign(_summary) : 0;
 
             if (Math.Abs(dist) < band) { Regime = Regime.Transition; RegimeReason = "prix a moins de " + S.TransitionAtr + " ATR5 du Zero Gamma"; return; }
             if (dist < 0 || sign < 0)
@@ -288,7 +304,8 @@ namespace DeepSpx.Engine
             }
             // Au-dessus du Zero Gamma : long gamma si Summary positif, ou si Summary n'est pas utilise ou absent
             Regime = Regime.LongGamma;
-            RegimeReason = sign > 0 ? "prix au-dessus du Zero Gamma, Summary positif" : "prix au-dessus du Zero Gamma";
+            RegimeReason = sign > 0 ? "prix au-dessus du Zero Gamma, Summary positif"
+                : "prix au-dessus du Zero Gamma" + (S.UseSummarySign && SummaryStale ? " (Summary absent ou fige, ignore)" : "");
         }
 
         // ------------------------------------------------------------ setup A : rejet de mur

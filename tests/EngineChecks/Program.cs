@@ -58,8 +58,10 @@ BarInput Bar(DateTime d, int minuteOfDay, double o, double h, double l, double c
     return b;
 }
 
+// Summary bouge un peu a chaque barre (comme le vrai : 242 Md puis 281 Md en 50 minutes le 04/11/2026), sans changer
+// de signe ; il reste fige si le Net Flow l'est.
 GammaInput G(double zero, double major, double minor, double summary, double netFlow) =>
-    new GammaInput { ZeroGamma = zero, MajorGamma = major, MinorGamma = minor, SummaryRegime = summary, NetFlow = netFlow, MmPressure = 1 };
+    new GammaInput { ZeroGamma = zero, MajorGamma = major, MinorGamma = minor, SummaryRegime = summary == 0 ? 0 : summary + netFlow, NetFlow = netFlow, MmPressure = 1 };
 
 List<Signal> Run(SetupEngine e, IEnumerable<BarInput> bars)
 {
@@ -281,6 +283,23 @@ List<Signal> Run(SetupEngine e, IEnumerable<BarInput> bars)
     var wrong = RunB(new EngineSettings(), 0);
     Check("Barres de Chicago lues a l'heure de New York : pas de signal a 09:10", !wrong.Signals.Any(x => x.Time.Hour == 9 && x.Time.Minute == 10),
         string.Join(", ", wrong.Signals.Select(x => x.Time.ToString("HH:mm"))));
+}
+
+// ================================================================ 10. Summary et Net Flow a 0 en live (issue #4), niveaux encore vivants
+// Summary negatif dans l'historique, puis 0 : son signe ne doit plus decider du regime. Net Flow a 0 : plus de pente.
+{
+    var e = new SetupEngine(Chicago());
+    int idx = 0;
+    double nf = 0, zg = 4900;
+    Run(e, CalmDay(day1, i => G(4900, 5060, 4970, -1e9, nf += 1), ref idx));
+    Check("Summary vivant et negatif -> SHORT GAMMA", e.Regime == Regime.ShortGamma && !e.SummaryStale, e.Regime + " " + e.RegimeReason);
+    var live = new List<BarInput>();
+    for (int m = 0; m < 60; m++)
+        live.Add(Bar(day2, 510 + m, 5000, 5001, 4999, 5000, 10, new GammaInput { ZeroGamma = zg += 0.01, MajorGamma = 5060, MinorGamma = 4970, SummaryRegime = 0, NetFlow = 0, MmPressure = 0 }, ref idx));
+    Run(e, live);
+    Check("Summary a 0 depuis 60 barres -> ignore, regime lu sur le Zero Gamma (LONG GAMMA)", e.SummaryStale && e.Regime == Regime.LongGamma && e.RegimeReason.Contains("Summary absent ou fige"),
+        e.Regime + " " + e.RegimeReason);
+    Check("Net Flow a 0 depuis 60 barres -> plus de pente (setup B impossible)", double.IsNaN(e.NetFlowSlope), e.NetFlowSlope.ToString());
 }
 
 Console.WriteLine(failures == 0 ? "\nTous les controles sont OK." : "\n" + failures + " controle(s) en echec.");

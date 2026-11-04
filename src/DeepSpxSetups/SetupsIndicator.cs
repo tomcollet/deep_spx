@@ -32,7 +32,7 @@ namespace DeepSpx.Setups
     public class SetupsIndicator : VolSysAPI.Indicators.Indicator
     {
         public const string Prefix = "DSPX;";
-        public const string Version = "1.1";
+        public const string Version = "1.2";
 
         public static IndicatorDescriptionBase Register() =>
             new IndicatorDescriptionBase
@@ -420,7 +420,8 @@ namespace DeepSpx.Setups
                 var lines = new List<string>();
                 lines.Add("DeepSpx Setups v" + Version + "  |  " + RegimeText(e.Regime) + "  |  " + e.RegimeReason);
                 lines.Add("Zero Gamma " + Fmt(e.ZeroGamma) + "  |  Major " + Fmt(e.MajorGamma) + "  |  Minor " + Fmt(e.MinorGamma) +
-                          "  |  Summary " + Short(e.Summary) + "  |  pente Net Flow " + Short(e.NetFlowSlope));
+                          "  |  Summary " + Short(e.Summary) + (e.SummaryStale && !double.IsNaN(e.Summary) ? " (fige, ignore)" : "") +
+                          "  |  pente Net Flow " + Short(e.NetFlowSlope));
                 lines.Add("DeepGamma : derniere valeur il y a " + (e.GammaAgeBars == int.MaxValue ? "-" : e.GammaAgeBars.ToString(IC)) +
                           " barres" + (e.GammaStale ? "  |  FIGE" : "") + "  |  " + _mapText);
                 lines.Add("Heure des barres : " + _clockText + "  |  seance " + e.Settings.SessionText());
