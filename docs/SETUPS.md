@@ -1,4 +1,4 @@
-# Indicateur de setups (v1.2)
+# Indicateur de setups (v1.3)
 
 `src/DeepSpxSetups` : indicateur DeepCharts **« DeepSpx - Setups gamma x order flow »**. Il signale des achats et des
 ventes selon les trois setups de [STRATEGIE.md](STRATEGIE.md), dessine les signaux et leur résultat simulé, et
@@ -43,6 +43,12 @@ Graphique options SPX (ES-CME, 1 min) + indicateurs DeepGamma + DeepSpx Setups
 
 Une valeur DeepGamma à 0 ou NaN est considérée comme absente ; la dernière valeur valide est conservée. Les règles
 « inconnu » couvrent les deux défauts possibles en live (issue #4 : 0, ou valeur figée).
+
+**Summary et Market Maker Pressure sont lus 5 barres en arrière** (`SummaryLagBars`), en historique comme en live :
+DeepGamma ne les remplit qu'avec environ 3 minutes de retard (0 sur la barre qui se ferme, constaté le 04/11/2026). Lire
+la barre courante en historique reviendrait à utiliser en backtest une valeur que le live n'a pas encore. Les lignes
+`DSPX;LAG` (30 premières minutes de temps réel) donnent Summary et Pressure sur les 7 dernières barres, pour mesurer ce
+retard.
 
 Summary et Net Flow ont en plus leur propre contrôle, parce qu'ils peuvent tomber à 0 ou se figer en live alors que les
 niveaux d'Option Envelopes bougent encore (sonde du 04/11/2026) :
@@ -110,7 +116,7 @@ FLAT de tout à 15:45 ; une position à la fois ; 3 signaux par jour au plus ; a
 `EnableSetupA/B/C`, `RequireNetFlow`, `UseSummarySign`, `BlockOnStaleGamma`, `MaxTradesPerDay` (3), `MaxLossesPerDay`
 (2), `SlippageTicks` (1), `ApplyOptionOffset` (ajoute l'écart indice/future de la barre aux niveaux DeepGamma, si ceux-ci
 s'avèrent être en prix SPX), `EnvelopesId`, `SummaryId`, `NetFlowId`, `MmPressureId` (-1 = automatique),
-`MaxIndicatorScan`, `BarTimeZone`, `ShowStats`, `PanelFontSize`, `PanelX`, `PanelY`, `PanelLineStep`. Les autres seuils sont dans
+`MaxIndicatorScan`, `BarTimeZone`, `SummaryLagBars` (5), `LagLogMinutes` (30), `ShowStats`, `PanelFontSize`, `PanelX`, `PanelY`, `PanelLineStep`. Les autres seuils sont dans
 `Engine/EngineSettings.cs`.
 
 ## Vérifications

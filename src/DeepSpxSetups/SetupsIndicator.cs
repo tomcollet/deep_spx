@@ -32,7 +32,7 @@ namespace DeepSpx.Setups
     public class SetupsIndicator : VolSysAPI.Indicators.Indicator
     {
         public const string Prefix = "DSPX;";
-        public const string Version = "1.2";
+        public const string Version = "1.3";
 
         public static IndicatorDescriptionBase Register() =>
             new IndicatorDescriptionBase
@@ -62,6 +62,14 @@ namespace DeepSpx.Setups
         /// Heure des barres : 0 = detection automatique (reouverture Globex 18:00 a New York, 17:00 a Chicago ; ou
         /// ouverture 09:30 / 08:30 sur un graphique en seance reguliere), 1 = New York, 2 = Chicago.
         public int BarTimeZone { get; set; } = 0;
+        /// Option Summary et Market Maker Pressure sont lus ce nombre de barres en arriere, en historique comme en live.
+        /// Constat du 04/11/2026 : DeepGamma ne remplit ces deux series qu'avec environ 3 minutes de retard (0 sur la
+        /// barre qui se ferme, valeur quelques barres plus tard). Lire la barre courante en historique serait voir
+        /// l'avenir par rapport au live. Les niveaux d'Option Envelopes et Net Flow sont remplis a temps (lag 0).
+        public int SummaryLagBars { get; set; } = 5;
+        /// Lignes DSPX;LAG (Summary et Pressure sur les 7 dernieres barres, a chaque minute) pendant ce nombre de
+        /// minutes de temps reel : mesure du retard de DeepGamma.
+        public int LagLogMinutes { get; set; } = 30;
         /// Statistiques simulees dans le panneau. Desactivees par defaut : la periode recente est scellee (holdout), on
         /// n'y regle aucun parametre.
         public bool ShowStats { get; set; } = false;
@@ -150,6 +158,7 @@ namespace DeepSpx.Setups
                     _rtCloses++;
                     if ((_envId < 0 || _sumId < 0 || _nfId < 0) && _rtCloses % 15 == 1) MapGamma();
                     Process(b);
+                    LogLag(b);
                     UpdatePanel();
                 }
             }
@@ -303,9 +312,37 @@ namespace DeepSpx.Setups
             g.ZeroGamma = Shift(Read(_envId, _envZero, b), offset);
             g.MajorGamma = Shift(Read(_envId, _envMajor, b), offset);
             g.MinorGamma = Shift(Read(_envId, _envMinor, b), offset);
-            g.SummaryRegime = Read(_sumId, _sumSer, b);
+            g.SummaryRegime = ReadLagged(_sumId, _sumSer, b);
             g.NetFlow = Read(_nfId, _nfSer, b);
-            g.MmPressure = Read(_mmId, _mmSer, b);
+            g.MmPressure = ReadLagged(_mmId, _mmSer, b);
+        }
+
+        /// Derniere valeur valide a partir de la barre b - SummaryLagBars (10 barres de plus au plus).
+        private double ReadLagged(int ind, int ser, int b)
+        {
+            if (ind < 0) return double.NaN;
+            int lag = Math.Max(0, SummaryLagBars);
+            for (int k = lag; k <= lag + 10 && b - k >= 0; k++)
+            {
+                double v = Read(ind, ser, b - k);
+                if (!double.IsNaN(v) && v != 0.0) return v;
+            }
+            return double.NaN;
+        }
+
+        /// Une ligne par minute de temps reel : Summary et Pressure sur la barre qui se ferme et les 6 precedentes.
+        private void LogLag(int b)
+        {
+            if (_rtCloses > LagLogMinutes) return;
+            var sb = new StringBuilder();
+            var sp = new StringBuilder();
+            for (int k = 0; k <= 6 && b - k >= 0; k++)
+            {
+                if (k > 0) { sb.Append('|'); sp.Append('|'); }
+                sb.Append(Fmt(Read(_sumId, _sumSer, b - k)));
+                sp.Append(Fmt(Read(_mmId, _mmSer, b - k)));
+            }
+            Log("LAG", new[] { Fmt(VAn.BarVars[b].exchDt), "summary=" + sb, "pressure=" + sp });
         }
 
         private double Read(int ind, int ser, int b)

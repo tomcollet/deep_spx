@@ -69,11 +69,19 @@ utiliser (doc `troubleshooting`). **Documenté, et confirmé par `tools/DllCheck
 - **Niveaux d'Option Envelopes déjà en prix ES** : Major et Minor Gamma = strike SPX + base ES - SPX (décimales qui
   varient dans la journée : 7729,325 puis 7739,175 ; Major - Minor = 60 points). Constaté le 04/11/2026, à confirmer
   sur la ligne tracée.
-- **DeepGamma en live (04/11/2026, 13:00 New York, sonde v4.1)** : les trois niveaux d'Option Envelopes sont lus
-  non nuls en temps réel et bougent (Zero Gamma 7717,38 en fin d'historique, 7717,90 quatre minutes plus tard). Option
-  Summary / Regime valait 0 sur la barre en cours en fin d'historique, et 281 Md dix barres plus tôt : valeurs temps
-  réel de Summary, Net Flow et Market Maker Pressure encore à relever (lignes `SER;rt`). Summary est passé de négatif
-  (matin) à positif (après-midi).
+- **DeepGamma en live (Q7), 04/11/2026 12:56-12:59 New York, lignes `SER;rt` relues par `read_log_window.py`** :
+  - **Option Envelopes** (Zero, Major, Minor Gamma) : non nuls à la fermeture de chaque barre, et le Zero Gamma bouge
+    (7717,53 ; 7717,60 ; 7717,79) ;
+  - **Option Net Flow** (Call, Put, Difference) : non nul et différent à chaque minute ; la valeur lue en temps réel
+    pour 12:58 est celle que l'historique donne ensuite pour 12:58 ;
+  - **Option Summary / Regime et Option Market Maker Pressure** : **0 sur la barre qui se ferme**, mais remplis après
+    coup. Rechargée à 12:58:46, la sonde trouve des valeurs jusqu'à 12:55 et des 0 sur 12:56-12:58 (598 barres
+    renseignées sur 601). DeepGamma les écrit donc avec environ 3 minutes de retard : c'est sans doute ce que l'issue
+    #4 décrit comme « 0 en live ». L'indicateur de setups les lit 5 barres en arrière (`SummaryLagBars`), en historique
+    comme en live, et mesure ce retard (lignes `DSPX;LAG`).
+  - Summary est passé de négatif (matin, -15,7 Md à 02:58) à positif (+337 Md à 12:55).
+- **Carnet et trades en live** : carnet complet (≈ 900 niveaux bid / 520 ask, nombre d'ordres par niveau), pas de MBO ;
+  chaque trade porte `AggrID` et `RestID` (203 sur 204, 1993 sur 1994 par minute).
 - **Historique DeepGamma** : le graphique 1 minute du 04/11/2026 couvrait 15 jours (première barre le 20/10/2026,
   14 900 barres), avec des valeurs DeepGamma au moins 390 barres en arrière. Profondeur maximale non testée. Recharger seulement l'indicateur ne relivre pas les trades historiques (`hist_trades=0`).
 - Volume par prix : `NeedVbp = true`, puis `bar.PriceList` et `bar.VbpListAll[pinT][0]` (peut être `null`).

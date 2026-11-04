@@ -46,6 +46,7 @@ void RunChart(FakeVAn van, int shift, string clock)
         Add(day1.AddMinutes(510 + m), 5000, m == 120 ? 5020 : 5001, m == 200 ? 4980 : 4999, 5000, 100 + rnd.Next(0, 40), 100 + rnd.Next(0, 40));
     for (int m = 0; m < 30; m++) Add(day2.AddMinutes(510 + m), 5002, 5004, 5000, 5002, 210, 200);
     for (int m = 30; m < 40; m++) Add(day2.AddMinutes(510 + m), 5002, 5003, 5001, 5002, 210, 200);
+    int signalBar = van.BarVars.Count;
     Add(day2.AddMinutes(550), 5003, 5007, 5003, 5006, 800, 200);      // 09:10 Chicago : cassure du range d'ouverture
     Add(day2.AddMinutes(551), 5006.5, 5010, 5006, 5009, 250, 200);   // barre encore ouverte a la fin de l'historique
 
@@ -101,6 +102,9 @@ void RunChart(FakeVAn van, int shift, string clock)
         ("Signal B achat sur la barre de cassure (rejeu de l'historique)", sig != null && sig.StartsWith("DSPX;SIG;1;" + T(550) + ";B;LONG;ShortGamma;range d'ouverture haut;5004;5006;5003;5020;")),
         ("Entree a l'ouverture suivante + 1 tick", lines.Any(l => l == "DSPX;FILL;1;" + T(551) + ";5006.75")),
         ("Sortie a l'objectif en temps reel : +52 ticks", lines.Any(l => l == "DSPX;EXIT;1;" + T(553) + ";Target;5019.75;52")),
+        ("Summary lu 5 barres avant le signal (pas de vue sur l'avenir en historique)",
+            sig != null && sig.Split(';')[18] == FakeVAn.SummaryAt(signalBar - 5).ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)),
+        ("Lignes LAG en temps reel (Summary a 0 sur la barre qui se ferme)", lines.Any(l => l.StartsWith("DSPX;LAG;") && l.Contains("summary=0|0|0|-"))),
         ("Fleche + etiquette du signal, resultat a la sortie", marks.Count(a => a.AnnotationType == AnnotationType.ArrowUp) == lines.Count(l => l.StartsWith("DSPX;SIG;") && l.Contains(";LONG;")) && marks.Any(a => a.Text == "B achat") && marks.Any(a => a.Text == "+52 t")),
         ("Panneau : regime short gamma", panel.Any(t => t.Contains("SHORT GAMMA"))),
         ("Panneau : heure des barres et horaires de seance", panel.Any(t => t.StartsWith("Heure des barres : " + (clock == "Chicago" ? "Chicago" : "New York") + " (detecte)") &&
@@ -154,6 +158,8 @@ public class FakeVAn : IMethodCloudAPI
         [17] = ("DeepSpx - Setups gamma x order flow", new string[0]),
     };
 
+    public static double SummaryAt(int index) => -2e9 - index * 1e6;
+
     public BaseIndicatorPrms GetParamsById(int IndicatorIndex)
     {
         if (Hidden.Contains(IndicatorIndex) || !Indicators.TryGetValue(IndicatorIndex, out var d)) return null;
@@ -168,8 +174,9 @@ public class FakeVAn : IMethodCloudAPI
             case 0: return new[] { BarVars[Index].Close };
             // Zero Gamma derive un peu a chaque barre, comme sur le graphique de Tom (7714,67 -> 7715,00 en 10 minutes)
             case 1: return new[] { SubgraphIndex == 0 ? 5100.0 + Index * 0.001 : SubgraphIndex == 1 ? 5060.0 : 4970.0 };
-            case 7: return new[] { 1e8, 9e7 };
-            case 10: return new[] { -2e9 - Index * 1e6 };
+            // Summary et Pressure : 0 sur les 3 dernieres barres, comme chez Tom (remplis avec ~3 minutes de retard)
+            case 7: return new[] { Index > LastIndex() - 3 ? 0.0 : 1e8 + Index, 9e7 };
+            case 10: return new[] { Index > LastIndex() - 3 ? 0.0 : SummaryAt(Index) };
             case 15: return new[] { SubgraphIndex == 2 ? 1000.0 + Index : 0.0 };
             default: return null;
         }

@@ -50,6 +50,8 @@ travail : **français** (docs, commentaires, messages de commit).
   - setups : `dotnet run --project tests/EngineChecks`, `dotnet build tests/SetupsCompileCheck`, puis
     `dotnet run --project tools/DllCheck -- tests/SetupsCompileCheck/bin/Debug/net10.0/SetupsCompileCheck.dll`, puis
     `dotnet run --project tests/SetupsHarness` (tout en OK).
+- **Lecture des résultats** : `tools/read_log_window.py --follow --out data\log.txt` sur le PC de Tom (fenêtre Log
+  ouverte et remontée en haut) ; Tom envoie le fichier. Plus de captures d'écran sauf si le script ne lit rien.
 - **Heures** : `exchDt` est à l'heure de New York sur le graphique de Tom (constaté le 04/11/2026). Le moteur est réglé
   à New York par défaut ; l'indicateur détecte l'horloge des barres (`DSPX;CLOCK`). Ne jamais supposer Chicago.
 - **Rien dans `Engine/` ne dépend de Deepchart** (ni `VolSysAPI`, ni `VolumetricaCore`) et tout y respecte aussi le bac
@@ -70,12 +72,11 @@ travail : **français** (docs, commentaires, messages de commit).
 
 ## Prochaine action
 
-1. Tom compile et pose l'indicateur de setups (v1.1) : le build n'avait pas produit la DLL le 04/11 (message d'erreur
-   attendu). Vérifier `DSPX;CLOCK` (New York attendu) et que le Zero Gamma du panneau tombe sur la ligne DeepGamma
+1. Tom pose l'indicateur de setups (v1.3, compilé chez lui le 04/11 à 19h25). Vérifier `DSPX;CLOCK` (New York attendu) et que le Zero Gamma du panneau tombe sur la ligne DeepGamma
    (niveaux a priori déjà en prix ES : `ApplyOptionOffset` désactivé). Remettre Option Summary et Option Net Flow sur le
    graphique.
-2. Test B de la sonde en séance US (Q7, issue #4) : si DeepGamma est figé ou nul en live, l'indicateur reste en régime
-   inconnu, ce qui est voulu ; la recherche continue en Deep Replay.
+2. Q7 (04/11, `docs/SDK_DEEPCHARTS.md`) : Envelopes et Net Flow lisibles en live ; Summary et MM Pressure remplis avec
+   ~3 minutes de retard (lus avec `SummaryLagBars` = 5). Confirmer le retard avec les lignes `DSPX;LAG`.
 3. Test C (Deep Replay), lignes capturées par `tools/read_log_window.py --follow`.
 4. Ensuite : enregistreur par minute (étape 2) et backtest C# en ligne de commande réutilisant `Engine/`, puis une étude
    préenregistrée par setup sur les séances d'avant le 16/08/2026.
