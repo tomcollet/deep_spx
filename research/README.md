@@ -12,6 +12,7 @@ research/
   setup_a_wall/        un dossier par étude : PREREG.md, code, results/
   setup_b_momentum/
   setup_c_pin/
+  scalp_flux/          scalps 1-10 min : order flow ES selon le régime, flux d'options (PREREG en brouillon)
 ```
 
 ## Règles
