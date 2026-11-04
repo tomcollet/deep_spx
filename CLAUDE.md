@@ -81,7 +81,8 @@ travail : **français** (docs, commentaires, messages de commit).
 2. Q7 (04/11, `docs/SDK_DEEPCHARTS.md`) : Envelopes et Net Flow lisibles en live ; Summary et MM Pressure remplis avec
    3 minutes de retard, mesuré par les lignes `DSPX;LAG` (lus avec `SummaryLagBars` = 5).
 3. Test C (Deep Replay), lignes capturées par `tools/read_log_window.py --follow`.
-4. Étude des scalps (`research/scalp_flux/PREREG.md`, v1.6) : Tom charge 60 jours sur le graphique et envoie les
-   lignes `DSPX;STUDYINFO` / `DSPX;STUDY`. Décider d'après les critères du PREREG, sans rien régler.
+4. Étude des scalps faite le 04/11 (41 séances) : **échec d'H1 et d'H2**, piste close
+   (`research/scalp_flux/RESULTATS.md`). Ne pas retester de variante sur ces 41 séances. Reste ouvert : le carnet
+   (enregistrement live à faire).
 5. Ensuite : enregistreur par minute (étape 2) et backtest C# en ligne de commande réutilisant `Engine/`, puis une étude
    préenregistrée par setup A/B/C sur les séances d'avant le 16/08/2026.

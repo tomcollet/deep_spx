@@ -94,3 +94,5 @@ données. Il reste le carnet (étude séparée) et les setups A/B/C.
 - 04/11/2026, 20h08 : demande de Tom. Brackets à 1,5R et stop au plus 25 ticks (sa règle de risque) à la place des
   sorties au temps ; contrôles explicites ; calcul dans l'indicateur ; holdout ouvert pour les scalps (60 jours
   chargés), test final sur les séances live à partir du 05/11/2026. Aucune donnée regardée avant ce changement.
+- 04/11/2026, 20h23 : résultats (41 séances, du 08/09 au 04/11) : échec d'H1 et d'H2 au critère principal, piste
+  close. Voir [RESULTATS.md](RESULTATS.md). Le test final n'a pas lieu d'être.

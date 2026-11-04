@@ -6,7 +6,7 @@
 | 2 | Données (semaines 2-3) | `Engine/` C# pur + enregistreur dans la DLL ; replay des 9 mois ; une ligne par minute dans le log | Minutes reconstruites depuis les `.tdatac` = barres DeepCharts | À faire |
 | 3 | Faits connus (semaine 4) | Étude descriptive | Effets attendus retrouvés (vol réalisée vs GEX MM...) | À faire |
 | 4 | Setups (semaines 5-8) | Une étude par setup (PREREG, résultats) | Critères de [PROTOCOLE.md](PROTOCOLE.md) | **Avancé à la demande de Tom (04/11/2026)** : indicateur de setups v1 ([SETUPS.md](SETUPS.md)) avec les seuils de départ, non réglés. Les études restent à faire |
-| 4 bis | Scalps (demande de Tom, 04/11/2026) | Étude H1 / H2 dans l'indicateur ([PREREG](../research/scalp_flux/PREREG.md)), 60 jours chargés | Critères du PREREG en découverte et validation, puis test final sur les séances live à partir du 05/11/2026 | **En cours** : étude codée (v1.6), à lancer sur le graphique |
+| 4 bis | Scalps (demande de Tom, 04/11/2026) | Étude H1 / H2 dans l'indicateur ([PREREG](../research/scalp_flux/PREREG.md)), 60 jours chargés | Critères du PREREG en découverte et validation, puis test final sur les séances live à partir du 05/11/2026 | **Échec le 04/11/2026** (41 séances) : H1 et H2 font comme le hasard, environ −2 ticks par trade, le coût d'exécution. Piste close ([résultats](../research/scalp_flux/RESULTATS.md)) |
 | 5 | Simulation temps réel (4 semaines) | Moteur dans la DLL, signaux dans le log, ordres simulés | DeepGamma non nul en live (issue #4 corrigée) ; slippage réel dans l'hypothèse du backtest ; mêmes signaux en live et en rejeu | À faire |
 | 6 | Live | Un compte en MES, puis fan-out via le pupitre | Licence CME non-display réglée, règles de la prop firm vérifiées | À faire |
 
