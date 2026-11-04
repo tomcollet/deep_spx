@@ -1,4 +1,4 @@
-# Indicateur de setups (v1.7)
+# Indicateur de setups (v1.8)
 
 `src/DeepSpxSetups` : indicateur DeepCharts **« DeepSpx - Setups gamma x order flow »**. Il signale des achats et des
 ventes selon les trois setups de [STRATEGIE.md](STRATEGIE.md), dessine les signaux et leur résultat simulé, et
@@ -76,8 +76,8 @@ régulière précédente, Major, Minor et Zero Gamma.
   90e percentile) et la barre ne clôture pas sur son extrême : entrée vers le strike.
 - Objectif : le strike. Stop : 1 ATR5 au-delà de l'extrême. FLAT à 15:45.
 
-**Règle de risque de Tom (04/11/2026), pour tous les setups** : jamais plus de **25 ticks** de risque, objectif d'au
-moins **1,5 fois** le risque. Le signal est mesuré depuis l'entrée attendue (clôture + 1 tick) ; s'il ne respecte pas la
+**Règle de risque (désactivée depuis v1.8, retirée par Tom le 04/11/2026 à 20h37)** : `MaxRiskTicks` et
+`MinRewardRisk` (0 = sans limite). Posée à 25 ticks de risque au plus et un objectif d'au moins 1,5 fois le risque. Le signal est mesuré depuis l'entrée attendue (clôture + 1 tick) ; s'il ne respecte pas la
 règle, il est **refusé**, pas ajusté (panneau : « refusé : risque… » ou « refusé : objectif… », compteurs dans `HIST`).
 À l'ouverture suivante, une entrée qui porterait le risque au-delà de 25 ticks, ou qui ouvre déjà au-delà du stop, est
 annulée. Conséquence attendue : le setup C (objectif = le strike, stop à 1 ATR5 au-delà de l'extrême) passera rarement.
@@ -87,8 +87,9 @@ FLAT de tout à 15:45 ; une position à la fois ; 3 signaux par jour au plus ; a
 
 ## Recherche de configuration A/B/C (v1.7)
 
-Selon [research/optim_abc/PREREG.md](../research/optim_abc/PREREG.md) : 64 configurations (A 24, B 36, C 4 ; bande de
-transition, objectif structurel / 1,5R / 2R, seuils d'absorption, d'écart à la VWAP, de delta de cassure, Net Flow
+Selon [research/optim_abc/PREREG.md](../research/optim_abc/PREREG.md) : 104 configurations depuis v1.8 (A 40, B 60,
+C 4 ; bande de transition, objectif structurel / 0,5R / 1R / 1,5R / 2R, sans règle de risque, classement par taux de gain
+parmi les configurations gagnantes en recherche ; seuils d'absorption, d'écart à la VWAP, de delta de cassure, Net Flow
 exigé ou non, stop de C), chacune avec son contrôle en sens inverse, rejouées par l'indicateur sur l'historique chargé
 (barres d'une minute, 1 an). Séances avec DeepGamma **avant le 16/08/2026** (holdout d'A/B/C scellé), 60 % en
 recherche, 40 % en validation.

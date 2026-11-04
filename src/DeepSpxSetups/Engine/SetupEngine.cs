@@ -121,7 +121,7 @@ namespace DeepSpx.Engine
                 _pending = null;
                 double fillPrice = bar.Open + (int)p.Side * S.SlippageTicks * tick;
                 double fillRisk = (int)p.Side * (fillPrice - p.Stop) / tick;
-                if (rth && minute < S.ForcedExitMinute && fillRisk > 0 && fillRisk <= S.MaxRiskTicks + 1e-9)
+                if (rth && minute < S.ForcedExitMinute && fillRisk > 0 && (S.MaxRiskTicks <= 0 || fillRisk <= S.MaxRiskTicks + 1e-9))
                 {
                     p.Filled = true;
                     p.EntryBar = bar.Index;
@@ -216,13 +216,13 @@ namespace DeepSpx.Engine
                     double expected = bar.Close + (int)s.Side * S.SlippageTicks * tick;
                     double risk = (int)s.Side * (expected - s.Stop) / tick;
                     double reward = (int)s.Side * (s.Target - expected) / tick;
-                    if (risk > S.MaxRiskTicks + 1e-9)
+                    if (S.MaxRiskTicks > 0 && risk > S.MaxRiskTicks + 1e-9)
                     {
                         RejectedRisk++;
                         Blocked = KindLetter(s.Kind) + " refuse : risque " + risk.ToString("0", System.Globalization.CultureInfo.InvariantCulture) + " ticks > " + S.MaxRiskTicks;
                         s = null;
                     }
-                    else if (reward < S.MinRewardRisk * risk - 1e-9)
+                    else if (S.MinRewardRisk > 0 && reward < S.MinRewardRisk * risk - 1e-9)
                     {
                         RejectedReward++;
                         Blocked = KindLetter(s.Kind) + " refuse : objectif " + reward.ToString("0", System.Globalization.CultureInfo.InvariantCulture) + " t < " +

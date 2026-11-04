@@ -32,8 +32,9 @@ travail : **français** (docs, commentaires, messages de commit).
   explorer. **Exception décidée par Tom le 04/11/2026 : ouvert pour l'étude des scalps seulement** (60 jours chargés
   sur le graphique, jusqu'au 04/11 inclus) ; le test final des scalps = séances live à partir du 05/11/2026, jamais dans
   l'étude (`StudyEndDate` = 20261105). A/B/C gardent le holdout du 16/08.
-- **Règle de risque de Tom (04/11/2026)** : jamais plus de 25 ticks de risque, objectif d'au moins 1,5R. Appliquée à
-  tous les setups (signal refusé, pas ajusté) et aux scalps (brackets à 1,5R).
+- **Règle de risque de Tom** (25 ticks de risque au plus, objectif d'au moins 1,5R), posée le 04/11/2026 puis **retirée
+  par lui le même jour à 20h37** : désactivée par défaut (`MaxRiskTicks` = 0, `MinRewardRisk` = 0), toujours
+  disponible en paramètre. Les scalps (étude close) l'avaient appliquée.
 - **Exécution simulée** (bid/ask du tick suivant + 1 tick, robustesse à 2 ticks) jusqu'à la validation.
 - **Le pupitre copy trade est la dernière étape.** Ne pas l'intégrer avant que Tom le demande. Ses règles : BUY/SELL en
   tout-ou-rien, FLAT jamais bloqué, rien n'écoute ailleurs que sur 127.0.0.1.
@@ -84,8 +85,9 @@ travail : **français** (docs, commentaires, messages de commit).
 4. Étude des scalps faite le 04/11 (41 séances) : **échec d'H1 et d'H2**, piste close
    (`research/scalp_flux/RESULTATS.md`). Ne pas retester de variante sur ces 41 séances. Reste ouvert : le carnet
    (enregistrement live à faire).
-5. Recherche de configuration A/B/C (`research/optim_abc/PREREG.md`, v1.7, demande de Tom du 04/11) : Tom charge
-   1 an en minutes ; l'indicateur classe 64 configurations sur les séances d'avant le 16/08 (60 % recherche, 40 %
-   validation, 3 premières par setup seulement en validation). Appliquer la règle de sélection du PREREG telle quelle,
-   sans élargir la grille sur ces séances. Holdout d'A/B/C ouvert seulement sur décision de Tom.
+5. Recherche de configuration A/B/C (`research/optim_abc/`) : DeepGamma seulement depuis le 11/05/2026, donc 44
+   séances avant le holdout. Passage 1 (64 configurations, règle de risque) : rien de retenu. Passage 2 (v1.8,
+   104 configurations, sans règle de risque, classement par taux de gain parmi les configurations gagnantes) : à
+   lancer. Validation moins indépendante (mêmes séances) : le juge sera le holdout d'A/B/C, ouvert une fois sur
+   décision de Tom pour la configuration retenue.
 6. Ensuite : enregistrement du carnet en live, backtest C# en ligne de commande réutilisant `Engine/`.

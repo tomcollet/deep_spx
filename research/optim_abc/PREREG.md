@@ -66,3 +66,15 @@ simulation en live.
 ## Registre des modifications
 
 - 04/11/2026, 20h30 : version initiale.
+- 04/11/2026, 20h37 : premier passage (v1.7, [résultats](RESULTATS.md)) : aucune configuration retenue. **Demande de
+  Tom : retirer sa règle des 25 ticks et chercher le meilleur taux de gain.** Changements (v1.8) :
+  - règle de risque retirée de la grille (et désactivée en live) ;
+  - objectifs : structurel, 0,5R, 1R, 1,5R, 2R : **104 configurations** (A 40, B 60, C 4) ;
+  - **classement par taux de gain** (borne basse de Wilson à 95 %), parmi les configurations à au moins 30 trades
+    **et à espérance positive en recherche** : sans cette condition, le meilleur taux de gain est celui de l'objectif
+    le plus proche, qui perd (sur une marche au hasard : 55 % de gagnants pour un seuil de 72 %, −2,4 ticks par
+    trade). Le panneau montre aussi, pour information, le taux de gain brut le plus haut avec son seuil ;
+  - validation et critères de retenue inchangés.
+  - **Limite assumée** : ce second passage se fait sur les mêmes 44 séances, dont la validation a déjà été regardée
+    pour les 3 premières configurations B du premier passage. La validation est donc moins indépendante ; **le juge
+    sera le holdout** (séances à partir du 16/08/2026, environ 58), à ouvrir une fois pour la configuration retenue.

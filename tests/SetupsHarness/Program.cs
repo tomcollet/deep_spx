@@ -95,8 +95,8 @@ void RunChart(FakeVAn van, int shift, string clock, int studyEnd = 0, int optEnd
     {
         var o = new (string label, bool ok)[]
         {
-            ("Optimisation par tranches : terminee, 2 seances, 64 configurations", lines.Any(l => l.StartsWith("DSPX;OPTINFO;sessions=2;") && l.Contains("configs=64"))),
-            ("Optimisation : toute la grille en recherche (64 lignes OPTALL)", lines.Count(l => l.StartsWith("DSPX;OPTALL;")) == 64),
+            ("Optimisation par tranches : terminee, 2 seances, 104 configurations", lines.Any(l => l.StartsWith("DSPX;OPTINFO;sessions=2;") && l.Contains("configs=104"))),
+            ("Optimisation : toute la grille en recherche (104 lignes OPTALL)", lines.Count(l => l.StartsWith("DSPX;OPTALL;")) == 104),
             ("Optimisation : moins de 30 trades -> rien de classe, dit dans le panneau",
                 panel.Count(t => t.Contains(" : aucune configuration a 30 trades ou plus en recherche")) == 3),
             ("Aucune erreur", !lines.Any(l => l.StartsWith("DSPX;ERR;"))),

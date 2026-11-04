@@ -32,7 +32,7 @@ namespace DeepSpx.Setups
     public class SetupsIndicator : VolSysAPI.Indicators.Indicator
     {
         public const string Prefix = "DSPX;";
-        public const string Version = "1.7";
+        public const string Version = "1.8";
 
         public static IndicatorDescriptionBase Register() =>
             new IndicatorDescriptionBase
@@ -51,9 +51,10 @@ namespace DeepSpx.Setups
         public int MaxTradesPerDay { get; set; } = 3;
         public int MaxLossesPerDay { get; set; } = 2;
         public double SlippageTicks { get; set; } = 1;
-        /// Regle de risque de Tom : jamais plus de 25 ticks de risque, objectif d'au moins 1,5 fois le risque.
-        public int MaxRiskTicks { get; set; } = 25;
-        public double MinRewardRisk { get; set; } = 1.5;
+        /// Regle de risque : signal refuse au-dela de MaxRiskTicks ticks de risque ou sous MinRewardRisk fois le risque.
+        /// 0 = sans limite. Posee par Tom le 04/11/2026 (25 ticks, 1,5R), retiree par lui a 20h37 : desactivee.
+        public int MaxRiskTicks { get; set; } = 0;
+        public double MinRewardRisk { get; set; } = 0;
         /// Etude des scalps (research/scalp_flux/PREREG.md) sur l'historique charge, affichee dans le panneau.
         /// Etude close le 04/11/2026 (echec, research/scalp_flux/RESULTATS.md) : desactivee par defaut.
         public bool ShowStudy { get; set; } = false;
@@ -257,7 +258,7 @@ namespace DeepSpx.Setups
             {
                 StudyStart = ToDate(StudyStartDate, DateTime.MinValue),
                 StudyEnd = ToDate(StudyEndDate, ScalpSettings.ForwardTestStart),
-                RewardRisk = MinRewardRisk
+                RewardRisk = 1.5                                  // celui du PREREG de l'etude (close)
             };
         }
 
@@ -575,7 +576,7 @@ namespace DeepSpx.Setups
                     lines.Add("Simulation (indicative, ne pas regler dessus) : " + StatText("tous", e.StatsAll));
                     lines.Add("  " + StatText("A", e.StatsA) + "  |  " + StatText("B", e.StatsB) + "  |  " + StatText("C", e.StatsC));
                 }
-                if (e.RejectedRisk + e.RejectedReward > 0)
+                if (e.RejectedRisk + e.RejectedReward > 0 && (MaxRiskTicks > 0 || MinRewardRisk > 0))
                     lines.Add("Refuses par la regle de risque (" + MaxRiskTicks + " ticks, " + MinRewardRisk.ToString("0.0#", IC) + "R) : " +
                               e.RejectedRisk + " pour le risque, " + e.RejectedReward + " pour l'objectif");
                 if (_opt != null) lines.AddRange(OptimizerLines());
@@ -647,22 +648,32 @@ namespace DeepSpx.Setups
                       ", volumes ask/bid sur " + volPct.ToString("0", IC) + " % des barres (holdout du 16/08 scelle)");
             foreach (var setup in new[] { "A", "B", "C" })
             {
+                // pour information : le taux de gain brut le plus haut, gagnant ou non (le piege de la geometrie)
+                var raw = o.BestRawWinRate(setup);
+                if (raw == null)
+                {
+                    lines.Add("  " + setup + " : aucune configuration a " + o.Settings.MinTrades + " trades ou plus en recherche");
+                    continue;
+                }
+                lines.Add("  " + setup + " taux de gain brut max : " + raw.Config.Label + " : " + Pct(raw.Discovery.WinPct) + " (seuil " +
+                          Pct(raw.Discovery.BreakEvenPct) + "), " + Ticks(raw.Discovery.AvgTicks) + " t/tr sur " + raw.Discovery.Trades + " tr");
                 var top = o.Select(setup);
                 if (top.Count == 0)
                 {
-                    lines.Add("  " + setup + " : aucune configuration a " + o.Settings.MinTrades + " trades ou plus en recherche");
+                    lines.Add("     aucune configuration gagnante en recherche (esperance > 0, " + o.Settings.MinTrades + " trades ou plus) : rien a valider");
                     continue;
                 }
                 OptVerdict show = null;
                 foreach (var v in top) if (v.Retained) { show = v; break; }
                 bool any = show != null;
                 if (show == null) show = top[0];
-                lines.Add("  " + setup + " #" + show.Rank + " : " + show.Config.Label + "  ->  " + (any ? "RETENUE" : "aucune des " + top.Count + " premieres retenue (" + show.Reason + ")"));
                 var d = show.Discovery;
                 var v2 = show.Validation;
-                lines.Add("     recherche " + d.Trades + " tr, " + Pct(d.WinPct) + " (seuil " + Pct(d.BreakEvenPct) + "), " + Ticks(d.AvgTicks) + " t/tr, IC " +
-                          Ticks(d.CiLow) + " a " + Ticks(d.CiHigh) + ", total " + Ticks(d.TotalTicks) + " t  |  validation " + v2.Trades + " tr, " +
-                          Pct(v2.WinPct) + ", " + Ticks(v2.AvgTicks) + " t/tr, sens inverse " + Ticks(show.ValidationFlipped.AvgTicks));
+                lines.Add("     meilleur taux de gain parmi les gagnantes, #" + show.Rank + " : " + show.Config.Label + "  ->  " +
+                          (any ? "RETENUE" : "aucune des " + top.Count + " premieres retenue (" + show.Reason + ")"));
+                lines.Add("     recherche " + d.Trades + " tr, " + Pct(d.WinPct) + " (seuil " + Pct(d.BreakEvenPct) + "), " + Ticks(d.AvgTicks) + " t/tr, total " +
+                          Ticks(d.TotalTicks) + " t  |  validation " + v2.Trades + " tr, " + Pct(v2.WinPct) + " (seuil " + Pct(v2.BreakEvenPct) + "), " +
+                          Ticks(v2.AvgTicks) + " t/tr, sens inverse " + Ticks(show.ValidationFlipped.AvgTicks));
             }
             return lines;
         }
@@ -677,7 +688,7 @@ namespace DeepSpx.Setups
             {
                 i++;
                 var d = o.Result(c.Trades, 1, 0, i);
-                Log("OPTALL", new[] { c.Setup, c.Label, "recherche_trades=" + d.Trades, "win=" + Pct(d.WinPct), "avg=" + Ticks(d.AvgTicks),
+                Log("OPTALL", new[] { c.Setup, c.Label, "recherche_trades=" + d.Trades, "win=" + Pct(d.WinPct), "seuil=" + Pct(d.BreakEvenPct), "avg=" + Ticks(d.AvgTicks),
                     "ci95=" + Ticks(d.CiLow) + "/" + Ticks(d.CiHigh), "total=" + Ticks(d.TotalTicks) });
             }
             Log("OPTINFO", new[] { "sessions=" + n, "first=" + (n > 0 ? o.SessionDates[0].ToString("yyyy-MM-dd", IC) : "-"),
@@ -685,6 +696,11 @@ namespace DeepSpx.Setups
                 "end_exclusive=" + o.Settings.End.ToString("yyyy-MM-dd", IC), "rth_bars=" + o.RthBars,
                 "rth_bars_with_volume=" + o.RthBarsWithVolume, "configs=" + o.Configs.Count });
             foreach (var setup in new[] { "A", "B", "C" })
+            {
+                var raw = o.BestRawWinRate(setup);
+                if (raw != null)
+                    Log("OPTRAW", new[] { setup, raw.Config.Label, "recherche=" + raw.Discovery.Trades + "tr/" + Pct(raw.Discovery.WinPct) + "/seuil " +
+                        Pct(raw.Discovery.BreakEvenPct) + "/" + Ticks(raw.Discovery.AvgTicks) + "t/total " + Ticks(raw.Discovery.TotalTicks) });
                 foreach (var v in o.Select(setup))
                 {
                     var d = v.Discovery;
@@ -694,6 +710,7 @@ namespace DeepSpx.Setups
                         "validation=" + w.Trades + "tr/" + Pct(w.WinPct) + "/seuil " + Pct(w.BreakEvenPct) + "/" + Ticks(w.AvgTicks) + "t/total " + Ticks(w.TotalTicks),
                         "inverse=" + Ticks(v.ValidationFlipped.AvgTicks), v.Reason });
                 }
+            }
         }
 
         // ------------------------------------------------------------ etude des scalps

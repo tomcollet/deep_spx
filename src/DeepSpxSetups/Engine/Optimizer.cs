@@ -12,6 +12,10 @@ namespace DeepSpx.Engine
         public int MinTrades = 30;                               // en recherche, pour etre classee
         public int TopForValidation = 3;
         public double MinValidationTicks = 1.0;
+        /// Classement (demande de Tom du 04/11/2026, 20h37) : par taux de gain (borne basse de Wilson a 95 %), parmi les
+        /// configurations dont l'esperance en recherche est positive. Sans cette condition, le meilleur taux de gain
+        /// est celui de l'objectif le plus proche et du stop le plus lointain, qui perd de l'argent.
+        public bool RankByWinRate = true;
         public int BootstrapDraws = 500;
         public int Seed = 20261104;
     }
@@ -46,6 +50,19 @@ namespace DeepSpx.Engine
             : 100.0 * -AvgLossTicks / (AvgWinTicks - AvgLossTicks);
     }
 
+    public static class Wilson
+    {
+        /// Borne basse de l'intervalle de Wilson a 95 % d'une proportion (en %).
+        public static double Low(int wins, int n)
+        {
+            if (n <= 0) return double.NaN;
+            double z = 1.96, p = (double)wins / n, z2 = z * z;
+            double centre = p + z2 / (2 * n);
+            double half = z * Math.Sqrt(p * (1 - p) / n + z2 / (4.0 * n * n));
+            return 100.0 * (centre - half) / (1 + z2 / n);
+        }
+    }
+
     /// Verdict d'une configuration classee dans les 3 premieres de son setup.
     public sealed class OptVerdict
     {
@@ -71,7 +88,7 @@ namespace DeepSpx.Engine
         {
             P = settings;
             var transitions = new[] { 0.25, 0.5 };
-            var targets = new[] { 0, 15, 20 };                     // 0 structurel, 15 = 1,5R, 20 = 2R
+            var targets = new[] { 0, 5, 10, 15, 20 };              // 0 structurel, sinon dixiemes de R : 0,5R a 2R
             foreach (double tr in transitions)
                 foreach (int tg in targets)
                 {
@@ -111,6 +128,8 @@ namespace DeepSpx.Engine
             s.TargetMode = target == 0 ? 0 : 1;
             s.TargetR = target / 10.0;
             s.FlipSide = false;
+            s.MaxRiskTicks = 0;                                     // regle de risque retiree par Tom (04/11/2026, 20h37)
+            s.MinRewardRisk = 0;
             return s;
         }
 
@@ -217,6 +236,23 @@ namespace DeepSpx.Engine
             return r;
         }
 
+        /// Pour information : la configuration au taux de gain brut le plus eleve en recherche, gagnante ou non.
+        public OptVerdict BestRawWinRate(string setup)
+        {
+            OptVerdict best = null;
+            int i = 0;
+            foreach (var c in Configs)
+            {
+                i++;
+                if (c.Setup != setup) continue;
+                var d = Result(c.Trades, 1, 0, i);
+                if (d.Trades < P.MinTrades) continue;
+                if (best == null || Wilson.Low(d.Wins, d.Trades) > Wilson.Low(best.Discovery.Wins, best.Discovery.Trades))
+                    best = new OptVerdict { Config = c, Discovery = d };
+            }
+            return best;
+        }
+
         /// Les 3 premieres configurations d'un setup en recherche, et leur verdict en validation (regle du PREREG).
         public List<OptVerdict> Select(string setup)
         {
@@ -228,9 +264,13 @@ namespace DeepSpx.Engine
                 if (c.Setup != setup) continue;
                 var d = Result(c.Trades, 1, 0, i);
                 if (d.Trades < P.MinTrades || double.IsNaN(d.CiLow)) continue;
+                if (P.RankByWinRate && !(d.AvgTicks > 0)) continue;   // gagnante en recherche, sinon le taux de gain ne veut rien dire
                 ranked.Add(new OptVerdict { Config = c, Discovery = d });
             }
-            ranked.Sort((a, b) => b.Discovery.CiLow.CompareTo(a.Discovery.CiLow));
+            if (P.RankByWinRate)
+                ranked.Sort((a, b) => Wilson.Low(b.Discovery.Wins, b.Discovery.Trades).CompareTo(Wilson.Low(a.Discovery.Wins, a.Discovery.Trades)));
+            else
+                ranked.Sort((a, b) => b.Discovery.CiLow.CompareTo(a.Discovery.CiLow));
             if (ranked.Count > P.TopForValidation) ranked.RemoveRange(P.TopForValidation, ranked.Count - P.TopForValidation);
             for (int k = 0; k < ranked.Count; k++)
             {

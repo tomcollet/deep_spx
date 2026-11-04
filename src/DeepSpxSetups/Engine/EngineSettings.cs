@@ -58,10 +58,10 @@ namespace DeepSpx.Engine
         public int TimeStopBarsB = 60;
         public int TimeStopBarsC = 105;
 
-        // ---- Regle de risque de Tom (04/11/2026), pour tous les setups : jamais plus de 25 ticks de risque, et un
-        //      objectif d'au moins 1,5 fois le risque. Un signal qui ne la respecte pas est refuse, pas ajuste.
-        public int MaxRiskTicks = 25;
-        public double MinRewardRisk = 1.5;
+        // ---- Regle de risque : signal refuse au-dela de MaxRiskTicks de risque ou sous MinRewardRisk (0 : sans limite).
+        //      Posee par Tom le 04/11/2026 (25 ticks, 1,5R), retiree par lui le meme jour a 20h37 : desactivee par defaut.
+        public int MaxRiskTicks = 0;
+        public double MinRewardRisk = 0;
 
         // ---- Objectif : 0 = structurel (VWAP pour A, niveau suivant pour B, strike pour C), 1 = TargetR fois le risque
         //      depuis l'entree attendue (A et B ; C garde le strike). Recherche de configuration : research/optim_abc.

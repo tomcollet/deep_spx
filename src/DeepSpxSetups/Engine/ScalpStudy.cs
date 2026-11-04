@@ -94,7 +94,7 @@ namespace DeepSpx.Engine
             _rnd = new Random(P.Seed);
             foreach (int st in P.StopTicks)
             {
-                if (st > S.MaxRiskTicks) continue;
+                if (S.MaxRiskTicks > 0 && st > S.MaxRiskTicks) continue;
                 Add(ScalpRule.H1Regime, st);
                 Add(ScalpRule.H2NetFlow, st);
             }

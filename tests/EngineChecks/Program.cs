@@ -232,7 +232,10 @@ List<Signal> Run(SetupEngine e, IEnumerable<BarInput> bars)
 for (int pass = 0; pass < 2; pass++)
 {
     bool withRule = pass == 1;
-    var e = new SetupEngine(withRule ? Chicago() : ChicagoNoRiskRule());
+    var ruled = Chicago();
+    ruled.MaxRiskTicks = 25;                              // regle de Tom, retiree le 04/11 a 20h37 mais toujours disponible
+    ruled.MinRewardRisk = 1.5;
+    var e = new SetupEngine(withRule ? ruled : ChicagoNoRiskRule());
     int idx = 0;
     double nf = 0;
     Run(e, CalmDay(day1, i => G(4900, 5000, 4950, 1e9, nf += 1), ref idx));
@@ -490,8 +493,9 @@ foreach (var variant in new[] { "2R", "inverse" })
             });
         }
     }
-    Check("Optimizer : 64 configurations (A 24, B 36, C 4)", opt.Configs.Count == 64 && opt.Configs.Count(c => c.Setup == "A") == 24 &&
-        opt.Configs.Count(c => c.Setup == "B") == 36 && opt.Configs.Count(c => c.Setup == "C") == 4, opt.Configs.Count.ToString());
+    Check("Optimizer : 104 configurations (A 40, B 60, C 4), sans regle de risque", opt.Configs.Count == 104 && opt.Configs.Count(c => c.Setup == "A") == 40 &&
+        opt.Configs.Count(c => c.Setup == "B") == 60 && opt.Configs.Count(c => c.Setup == "C") == 4 &&
+        opt.Configs.All(c => c.Settings.MaxRiskTicks == 0 && c.Settings.MinRewardRisk == 0), opt.Configs.Count.ToString());
     Check("Optimizer : 60 seances avant le 16/08, les 5 du holdout exclues ; recherche 36 / validation 24",
         opt.SessionDates.Count == 60 && opt.DiscoverySessions == 36, opt.SessionDates.Count + " / " + opt.DiscoverySessions);
     var topB = opt.Select("B");
@@ -499,7 +503,14 @@ foreach (var variant in new[] { "2R", "inverse" })
     Check("Optimizer : la premiere B gagne en recherche et en validation, son sens inverse perd",
         topB.Count > 0 && topB[0].Discovery.AvgTicks > 1 && topB[0].Validation.AvgTicks > 1 && topB[0].ValidationFlipped.AvgTicks < 0,
         topB.Count == 0 ? "" : topB[0].Discovery.AvgTicks + " / " + topB[0].Validation.AvgTicks + " / " + topB[0].ValidationFlipped.AvgTicks);
-    Check("Optimizer : aucun trade A ni C (jamais de long gamma) -> rien a classer", opt.Select("A").Count == 0 && opt.Select("C").Count == 0);
+    Check("Optimizer : aucun trade A ni C (jamais de long gamma) -> rien a classer", opt.Select("A").Count == 0 && opt.Select("C").Count == 0 &&
+        opt.BestRawWinRate("A") == null);
+    Check("Optimizer : classement par taux de gain parmi les configurations gagnantes en recherche",
+        topB.All(v => v.Discovery.AvgTicks > 0) && topB.Count > 1 &&
+        Wilson.Low(topB[0].Discovery.Wins, topB[0].Discovery.Trades) >= Wilson.Low(topB[1].Discovery.Wins, topB[1].Discovery.Trades));
+    var rawB = opt.BestRawWinRate("B");
+    Check("Optimizer : taux de gain brut max de B rapporte", rawB != null && rawB.Discovery.Trades >= 30, rawB == null ? "aucun" : rawB.Config.Label);
+    Check("Wilson : 60 gagnants sur 100 -> borne basse 50,2 %", Math.Abs(Wilson.Low(60, 100) - 50.2) < 0.1, Wilson.Low(60, 100).ToString("0.00"));
     Check("Optimizer : aucun trade compte apres le 16/08", opt.Configs.All(c => c.Trades.All(t => t.Session < 60)));
 }
 
